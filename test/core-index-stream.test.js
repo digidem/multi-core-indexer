@@ -1,48 +1,84 @@
 // @ts-check
 const { IndexStream } = require('../lib/core-index-stream')
-const { test } = require('tap')
+const { test, only } = require('tap')
+const { once } = require('events')
 const ram = require('random-access-memory')
 const { create, replicate, eventFlush } = require('./helpers')
 
+test('Indexes all items already in a core', async (t) => {
+  const core = await create()
+  const blocks = []
+  for (let i = 0; i < 10; i++) {
+    blocks.push(Buffer.from(`block${i}`))
+  }
+  const expected = blocksToExpected(blocks, core.key)
+  await core.append(blocks)
+  /** @type {any[]} */
+  const entries = []
+  const stream = new IndexStream(core, ram(), { highWaterMark: 6 * 4 })
+  stream.on('data', (entry) => entries.push(entry))
+  await once(stream, 'indexed')
+  t.same(entries, expected)
+})
+
+test('Indexes items appended after initial index', async (t) => {
+  const core = await create()
+  const blocks = []
+  for (let i = 0; i < 10; i++) {
+    blocks.push(Buffer.from(`block${i}`))
+  }
+  /** @type {any[]} */
+  const entries = []
+  const stream = new IndexStream(core, ram(), { highWaterMark: 6 * 4 })
+  stream.on('data', (entry) => entries.push(entry))
+  await once(stream, 'indexed')
+  t.same(entries, [], 'no entries before append')
+  const expected = blocksToExpected(blocks, core.key)
+  await core.append(blocks)
+  await once(stream, 'indexed')
+  t.same(entries, expected)
+})
+
 test('Readable stream from sparse hypercore', async (t) => {
   const a = await create()
-  await a.append(['a', 'b', 'c', 'd', 'e'])
+  const blocks = []
+  for (let i = 0; i < 100; i++) {
+    blocks.push(Buffer.from(`block${i.toString().padStart(3, '0')}`))
+  }
+  await a.append(blocks)
   const b = await create(a.key)
 
   replicate(a, b, t)
 
-  const range = b.download({ start: 3, end: 5 })
+  const range = b.download({ start: 5, end: 20 })
   await range.downloaded()
 
-  const stream = new IndexStream(b, ram())
+  const stream = new IndexStream(b, ram(), { highWaterMark: 8 * 4 })
   /** @type {string[]} */
-  const chunks = []
-  stream.on('data', (chunk) => chunks.push(chunk.toString()))
+  const entries = []
+  stream.on('data', (entry) => entries.push(entry.block))
+  await once(stream, 'indexed')
 
-  await once(stream, 'index-state', 'idle')
+  t.same(entries, blocks.slice(5, 20))
+  const range2 = b.download({ start: 50, end: 60 })
+  await Promise.all([range2.downloaded(), once(stream, 'indexed')])
 
-  t.same(chunks, ['d', 'e'])
-  const range2 = b.download({ blocks: [1] })
-  await Promise.all([range2.downloaded(), once(stream, 'index-state', 'idle')])
-
-  t.same(chunks, ['d', 'e', 'b'])
+  t.same(
+    entries.sort(),
+    [...blocks.slice(5, 20), ...blocks.slice(50, 60)].sort()
+  )
 })
 
 /**
- * Like events.once, but awaits a return value from an event
  *
- * @param {import('events').EventEmitter} emitter
- * @param {string} event
- * @param {any} value
- * @returns {Promise<void>}
+ * @param {Buffer[]} blocks
+ * @param {Buffer} key
+ * @returns
  */
-async function once(emitter, event, value) {
-  return new Promise((resolve) => {
-    emitter.on(event, function eventHandler(val) {
-      if (val === value) {
-        emitter.off(event, eventHandler)
-        resolve()
-      }
-    })
-  })
+function blocksToExpected(blocks, key) {
+  return blocks.map((block, i) => ({
+    key,
+    block,
+    index: i,
+  }))
 }
