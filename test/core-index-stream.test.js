@@ -20,12 +20,10 @@ test('Readable stream from sparse hypercore', async (t) => {
   stream.on('data', (chunk) => chunks.push(chunk.toString()))
 
   await once(stream, 'index-state', 'idle')
-  await eventFlush()
 
   t.same(chunks, ['d', 'e'])
   const range2 = b.download({ blocks: [1] })
   await Promise.all([range2.downloaded(), once(stream, 'index-state', 'idle')])
-  await eventFlush()
 
   t.same(chunks, ['d', 'e', 'b'])
 })
