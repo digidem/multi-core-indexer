@@ -2,11 +2,13 @@
 const { IndexStream } = require('../lib/core-index-stream')
 const { test, only } = require('tap')
 const { once } = require('events')
-const { promisify } = require('util')
 const ram = require('random-access-memory')
-const { create, replicate, eventFlush } = require('./helpers')
-
-const BLOCK_LENGTH = Buffer.from('block000000').byteLength
+const {
+  create,
+  replicate,
+  generateFixture,
+  BLOCK_LENGTH,
+} = require('./helpers')
 
 test('Indexes all items already in a core', async (t) => {
   const a = await create()
@@ -90,7 +92,7 @@ test('Appends from a replicated core are indexed', async (t) => {
   t.same(entries.sort(), [...blocks1, ...blocks2].sort())
 })
 
-only('Maintains index state', async (t) => {
+test('Maintains index state', async (t) => {
   const a = await create()
   /** @type {any[]} */
   const entries = []
@@ -125,22 +127,4 @@ function blocksToExpected(blocks, key) {
     block,
     index: i,
   }))
-}
-
-/**
- *
- * @param {number} start
- * @param {number} end
- * @returns {Buffer[]}
- */
-function generateFixture(start, end) {
-  const blocks = []
-  for (let i = start; i < end; i++) {
-    blocks.push(
-      Buffer.from(
-        `block${i.toString().padStart(BLOCK_LENGTH - 'block'.length, '0')}`
-      )
-    )
-  }
-  return blocks
 }
