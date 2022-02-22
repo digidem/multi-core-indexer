@@ -1,5 +1,5 @@
 // @ts-check
-const { CoreIndexStream } = require('../lib/core-index-stream')
+const { CoreIndexStream } = require('../../lib/core-index-stream')
 const { test, only } = require('tap')
 const { once } = require('events')
 const ram = require('random-access-memory')
@@ -8,7 +8,7 @@ const {
   replicate,
   generateFixture,
   BLOCK_LENGTH,
-} = require('./helpers')
+} = require('../helpers')
 
 test('Indexes all items already in a core', async (t) => {
   const a = await create()
@@ -56,7 +56,7 @@ test('Readable stream from sparse hypercore', async (t) => {
   const stream = new CoreIndexStream(b, ram(), {
     highWaterMark: BLOCK_LENGTH * 4,
   })
-  /** @type {string[]} */
+  /** @type {Buffer[]} */
   const entries = []
   stream.on('data', (entry) => entries.push(entry.block))
   await once(stream, 'indexed')
@@ -85,7 +85,7 @@ test('Appends from a replicated core are indexed', async (t) => {
   const stream = new CoreIndexStream(b, ram(), {
     highWaterMark: BLOCK_LENGTH * 4,
   })
-  /** @type {string[]} */
+  /** @type {Buffer[]} */
   const entries = []
   stream.on('data', (entry) => entries.push(entry.block))
   await once(stream, 'indexed')

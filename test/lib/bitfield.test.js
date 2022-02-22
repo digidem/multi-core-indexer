@@ -2,7 +2,7 @@
 
 const { test } = require('tap')
 const ram = require('random-access-memory')
-const Bitfield = require('../lib/bitfield')
+const Bitfield = require('../../lib/bitfield')
 
 test('bitfield - set and get', async function (t) {
   const b = await Bitfield.open(ram())

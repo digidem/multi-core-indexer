@@ -52,6 +52,7 @@ declare module 'hypercore' {
       options?: HypercoreOptions & { valueEncoding?: TValueEncoding }
     )
     [key: string]: any
+    readonly key: Buffer
     get<TGetValueEncoding extends ValueEncoding = TValueEncoding>(
       index: number,
       options?: HypercoreGetOptions & { valueEncoding?: TGetValueEncoding }
