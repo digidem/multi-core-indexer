@@ -8,6 +8,11 @@ const { MultiCoreIndexStream } = require('./lib/multi-core-index-stream')
 const { defaultByteLength } = require('./lib/utils')
 
 const DEFAULT_BATCH_SIZE = 16384
+// The indexing rate (in entries per second) is calculated as an exponential
+// moving average. A factor > 1 will put more weight on previous values.
+const MOVING_AVG_FACTOR = 3
+const kHandleEntries = Symbol('handleEntries')
+const kEmitState = Symbol('emitState')
 
 /** @typedef {string | ((name: string) => import('random-access-storage'))} StorageParam */
 /** @typedef {import('./lib/types').ValueEncoding} ValueEncoding */
@@ -23,6 +28,12 @@ const DEFAULT_BATCH_SIZE = 16384
 class MultiCoreIndexer extends TypedEmitter {
   #indexStream
   #writeStream
+  #batch
+  /** @type {import('./lib/types').IndexStateCurrent} */
+  #state = 'indexing'
+  #lastRemaining = -1
+  #rateMeasurementStart = Date.now()
+  #rate = 0
 
   /**
    *
@@ -44,14 +55,16 @@ class MultiCoreIndexer extends TypedEmitter {
   ) {
     super()
     const createStorage = MultiCoreIndexer.defaultStorage(storage)
-    const coreIndexStreams = cores.map(
-      (core) =>
-        new CoreIndexStream(core, createStorage(core.key.toString('hex')))
-    )
+    const coreIndexStreams = cores.map((core) => {
+      const storage = createStorage(core.key.toString('hex'))
+      return new CoreIndexStream(core, storage)
+    })
     this.#indexStream = new MultiCoreIndexStream(coreIndexStreams)
+    this.#batch = batch
     this.#writeStream = /** @type {Writable<Entry<T>>} */ (
       new Writable({
-        writev: (entries, cb) => batch(entries).then(() => cb(), cb),
+        writev: (entries, cb) =>
+          this[kHandleEntries](entries).then(() => cb(), cb),
         highWaterMark: maxBatch,
         byteLength,
       })
@@ -59,7 +72,7 @@ class MultiCoreIndexer extends TypedEmitter {
     this.#indexStream.on('index-state', (state) =>
       this.emit('index-state', state)
     )
-    this.#indexStream.on('indexed', () => this.emit('indexed'))
+    this.#indexStream.once('indexed', () => this[kEmitState]())
     this.#indexStream.pipe(this.#writeStream)
   }
 
@@ -70,6 +83,43 @@ class MultiCoreIndexer extends TypedEmitter {
       once(this.#indexStream, 'close'),
       once(this.#writeStream, 'close'),
     ])
+  }
+
+  /** @param {Entry<T>[]} entries */
+  async [kHandleEntries](entries) {
+    this[kEmitState](entries.length)
+    if (!entries.length) return // not sure this is necessary, but better safe than sorry
+    await this.#batch(entries)
+    const batchTime = Date.now() - this.#rateMeasurementStart
+    // Current rate entries per second
+    const rate = entries.length / (batchTime / 1000)
+    // Moving average rate - use current rate if this is the first measurement
+    this.#rate =
+      rate + this.#rate > 0 ? (this.#rate - rate) / MOVING_AVG_FACTOR : 0
+    // Set this at the end of batch rather than start so the timing also
+    // includes the reads from the index streams
+    this.#rateMeasurementStart = Date.now()
+    this[kEmitState]()
+  }
+
+  [kEmitState](processing = 0) {
+    const remaining = this.#indexStream.remaining + processing
+    if (remaining === this.#lastRemaining) return
+    this.#lastRemaining = remaining
+    if (remaining > 0 && this.#state === 'idle') {
+      // switch from idle to indexing --> start measuring rate
+      // TODO: This will only currently be triggered after the batch function is
+      // called, so it will the rate will not measure the first batch of reads
+      // after an idle period. Need an "index-start" event bubbled up from the
+      // index streams to know when "indexing" is actually started.
+      this.#rateMeasurementStart = Date.now()
+    }
+    this.#state = remaining === 0 ? 'idle' : 'indexing'
+    this.emit('index-state', {
+      current: this.#state,
+      remaining,
+      entriesPerSecond: this.#rate,
+    })
   }
 
   /**

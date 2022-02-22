@@ -1,7 +1,11 @@
 import { ReadableEvents } from 'streamx'
 
+export type IndexStateCurrent = 'idle' | 'indexing'
+
 export interface IndexState {
+  current: IndexStateCurrent
   remaining: number
+  entriesPerSecond: number
 }
 
 export interface IndexEvents {
