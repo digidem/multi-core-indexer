@@ -9,31 +9,42 @@ const { MultiCoreIndexStream } = require('./lib/multi-core-index-stream')
 const DEFAULT_BATCH_SIZE = 16384
 
 /** @typedef {string | ((name: string) => import('random-access-storage'))} StorageParam */
+/** @typedef {import('./lib/types').ValueEncoding} ValueEncoding */
+/**
+ * @template {ValueEncoding} [T='binary']
+ * @typedef {import('./lib/types').Entry<T>} Entry
+ */
 
+/**
+ * @template {ValueEncoding} [T='binary']
+ * @extends {TypedEmitter<import('./lib/types').IndexEvents>}
+ */
 class MultiCoreIndexer extends TypedEmitter {
   #indexStream
   #writeStream
 
   /**
    *
-   * @param {import('hypercore')[]} cores
+   * @param {import('hypercore')<T>[]} cores
    * @param {object} opts
-   * @param {(entries: any[]) => Promise<void>} opts.batch
+   * @param {(entries: Entry<T>[]) => Promise<void>} opts.batch
    * @param {StorageParam} opts.storage
    * @param {number} [opts.maxBatch=16384]
    */
   constructor(cores, { batch, maxBatch = DEFAULT_BATCH_SIZE, storage }) {
     super()
     const createStorage = MultiCoreIndexer.defaultStorage(storage)
-    const indexStreams = cores.map(
+    const coreIndexStreams = cores.map(
       (core) =>
         new CoreIndexStream(core, createStorage(core.key.toString('hex')))
     )
-    this.#indexStream = new MultiCoreIndexStream(indexStreams)
-    this.#writeStream = new Writable({
-      writev: (entries, cb) => batch(entries).then(() => cb(), cb),
-      highWaterMark: maxBatch,
-    })
+    this.#indexStream = new MultiCoreIndexStream(coreIndexStreams)
+    this.#writeStream = /** @type {Writable<Entry<T>>} */ (
+      new Writable({
+        writev: (entries, cb) => batch(entries).then(() => cb(), cb),
+        highWaterMark: maxBatch,
+      })
+    )
     this.#indexStream.on('index-state', (state) =>
       this.emit('index-state', state)
     )
