@@ -1,5 +1,5 @@
 // @ts-check
-const { IndexStream } = require('../lib/core-index-stream')
+const { CoreIndexStream } = require('../lib/core-index-stream')
 const { test, only } = require('tap')
 const { once } = require('events')
 const ram = require('random-access-memory')
@@ -17,7 +17,9 @@ test('Indexes all items already in a core', async (t) => {
   await a.append(blocks)
   /** @type {any[]} */
   const entries = []
-  const stream = new IndexStream(a, ram(), { highWaterMark: BLOCK_LENGTH * 4 })
+  const stream = new CoreIndexStream(a, ram(), {
+    highWaterMark: BLOCK_LENGTH * 4,
+  })
   stream.on('data', (entry) => entries.push(entry))
   await once(stream, 'indexed')
   t.same(entries, expected)
@@ -28,7 +30,9 @@ test('Indexes items appended after initial index', async (t) => {
   const blocks = generateFixture(0, 10)
   /** @type {any[]} */
   const entries = []
-  const stream = new IndexStream(a, ram(), { highWaterMark: BLOCK_LENGTH * 4 })
+  const stream = new CoreIndexStream(a, ram(), {
+    highWaterMark: BLOCK_LENGTH * 4,
+  })
   stream.on('data', (entry) => entries.push(entry))
   await once(stream, 'indexed')
   t.same(entries, [], 'no entries before append')
@@ -49,7 +53,9 @@ test('Readable stream from sparse hypercore', async (t) => {
   const range = b.download({ start: 5, end: 20 })
   await range.downloaded()
 
-  const stream = new IndexStream(b, ram(), { highWaterMark: BLOCK_LENGTH * 4 })
+  const stream = new CoreIndexStream(b, ram(), {
+    highWaterMark: BLOCK_LENGTH * 4,
+  })
   /** @type {string[]} */
   const entries = []
   stream.on('data', (entry) => entries.push(entry.block))
@@ -76,7 +82,9 @@ test('Appends from a replicated core are indexed', async (t) => {
   const range1 = b.download({ start: 0, end: b.length })
   await range1.downloaded()
 
-  const stream = new IndexStream(b, ram(), { highWaterMark: BLOCK_LENGTH * 4 })
+  const stream = new CoreIndexStream(b, ram(), {
+    highWaterMark: BLOCK_LENGTH * 4,
+  })
   /** @type {string[]} */
   const entries = []
   stream.on('data', (entry) => entries.push(entry.block))
@@ -97,7 +105,7 @@ test('Maintains index state', async (t) => {
   /** @type {any[]} */
   const entries = []
   const storage = ram()
-  const stream1 = new IndexStream(a, storage, {
+  const stream1 = new CoreIndexStream(a, storage, {
     highWaterMark: BLOCK_LENGTH * 4,
   })
   stream1.on('data', (entry) => entries.push(entry.block))
@@ -109,7 +117,7 @@ test('Maintains index state', async (t) => {
   stream1.destroy()
   await once(stream1, 'close')
   await a.append(blocks.slice(500, 1000))
-  const stream2 = new IndexStream(a, storage)
+  const stream2 = new CoreIndexStream(a, storage)
   stream2.on('data', (entry) => entries.push(entry.block))
   await once(stream2, 'indexed')
   t.same(entries.sort(), blocks.sort())

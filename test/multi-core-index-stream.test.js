@@ -1,5 +1,5 @@
 const { IndexStream } = require('../lib/core-index-stream')
-const { MergeStream } = require('../lib/merge-stream')
+const { MultiCoreIndexStream } = require('../lib/multi-core-index-stream')
 const { test, only } = require('tap')
 const { once } = require('events')
 const ram = require('random-access-memory')
@@ -16,7 +16,7 @@ test('Indexes all items already in a core', async (t) => {
     indexStreams.push(new IndexStream(core, ram()))
   }
   const entries = []
-  const stream = new MergeStream(indexStreams, { highWaterMark: 10 })
+  const stream = new MultiCoreIndexStream(indexStreams, { highWaterMark: 10 })
   stream.on('data', (entry) => entries.push(entry))
   await once(stream, 'indexed')
   t.same(entries.sort(), expected.sort())
@@ -30,7 +30,7 @@ test('Indexes items appended after initial index', async (t) => {
   const expected = []
   const indexStreams = cores.map((core) => new IndexStream(core, ram()))
   const entries = []
-  const stream = new MergeStream(indexStreams, { highWaterMark: 10 })
+  const stream = new MultiCoreIndexStream(indexStreams, { highWaterMark: 10 })
   stream.on('data', (entry) => entries.push(entry))
   await once(stream, 'indexed')
   t.same(entries, [], 'no entries before append')
@@ -74,7 +74,7 @@ test('index sparse hypercores', async (t) => {
     indexStreams.push(new IndexStream(core, ram()))
   }
   const entries = []
-  const stream = new MergeStream(indexStreams, { highWaterMark: 10 })
+  const stream = new MultiCoreIndexStream(indexStreams, { highWaterMark: 10 })
   stream.on('data', (entry) => entries.push(entry))
   await once(stream, 'indexed')
 
@@ -108,7 +108,7 @@ test('Appends from a replicated core are indexed', async (t) => {
     indexStreams.push(new IndexStream(core, ram()))
   }
   const entries = []
-  const stream = new MergeStream(indexStreams, { highWaterMark: 10 })
+  const stream = new MultiCoreIndexStream(indexStreams, { highWaterMark: 10 })
   stream.on('data', (entry) => entries.push(entry))
   await once(stream, 'indexed')
 
@@ -147,7 +147,7 @@ test('Maintains index state', async (t) => {
   const indexStreams = cores.map(
     (core, i) => new IndexStream(core, storages[i])
   )
-  const stream = new MergeStream(indexStreams, { highWaterMark: 10 })
+  const stream = new MultiCoreIndexStream(indexStreams, { highWaterMark: 10 })
   stream.on('data', (entry) => entries.push(entry))
 
   for (const core of cores) {
