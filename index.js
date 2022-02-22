@@ -5,6 +5,7 @@ const { once } = require('events')
 const raf = require('random-access-file')
 const { CoreIndexStream } = require('./lib/core-index-stream')
 const { MultiCoreIndexStream } = require('./lib/multi-core-index-stream')
+const { defaultByteLength } = require('./lib/utils')
 
 const DEFAULT_BATCH_SIZE = 16384
 
@@ -30,8 +31,17 @@ class MultiCoreIndexer extends TypedEmitter {
    * @param {(entries: Entry<T>[]) => Promise<void>} opts.batch
    * @param {StorageParam} opts.storage
    * @param {number} [opts.maxBatch=16384]
+   * @param {(data: Entry<T>) => number} [opts.byteLength]
    */
-  constructor(cores, { batch, maxBatch = DEFAULT_BATCH_SIZE, storage }) {
+  constructor(
+    cores,
+    {
+      batch,
+      maxBatch = DEFAULT_BATCH_SIZE,
+      byteLength = defaultByteLength,
+      storage,
+    }
+  ) {
     super()
     const createStorage = MultiCoreIndexer.defaultStorage(storage)
     const coreIndexStreams = cores.map(
@@ -43,6 +53,7 @@ class MultiCoreIndexer extends TypedEmitter {
       new Writable({
         writev: (entries, cb) => batch(entries).then(() => cb(), cb),
         highWaterMark: maxBatch,
+        byteLength,
       })
     )
     this.#indexStream.on('index-state', (state) =>
