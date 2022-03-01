@@ -78,7 +78,7 @@ class MultiCoreIndexer extends TypedEmitter {
     this.#indexStream.on('indexing', this[kHandleIndexing])
   }
 
-  async destroy() {
+  async close() {
     this.#indexStream.off('indexing', this[kHandleIndexing])
     this.#writeStream.destroy()
     this.#indexStream.destroy()

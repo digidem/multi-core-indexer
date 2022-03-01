@@ -1,14 +1,14 @@
 {
-  "name": "hypercore-indexer",
-  "version": "1.0.0",
-  "description": "",
+  "name": "multi-core-indexer",
+  "version": "1.0.0-alpha.0",
+  "description": "Index one or more hypercores",
   "main": "index.js",
   "scripts": {
     "test": "tap --no-coverage"
   },
   "keywords": [],
-  "author": "",
-  "license": "ISC",
+  "author": "Digital Democracy",
+  "license": "MIT",
   "devDependencies": {
     "@types/debug": "^4.1.7",
     "@types/node": "^17.0.18",
@@ -27,5 +27,17 @@
     "debug": "^4.3.3",
     "random-access-file": "^2.2.0",
     "streamx": "^2.12.2"
-  }
+  },
+  "directories": {
+    "lib": "lib",
+    "test": "test"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/digidem/multi-core-indexer.git"
+  },
+  "bugs": {
+    "url": "https://github.com/digidem/multi-core-indexer/issues"
+  },
+  "homepage": "https://github.com/digidem/multi-core-indexer#readme"
 }
