@@ -1,43 +1,41 @@
-const { CoreIndexStream } = require('../../lib/core-index-stream')
-const { MultiCoreIndexStream } = require('../../lib/multi-core-index-stream')
+// @ts-check
+const MultiCoreIndexer = require('../')
 const { test, only } = require('tap')
 const { once } = require('events')
 const ram = require('random-access-memory')
-const { Writable } = require('streamx')
 const {
   create,
   replicate,
   generateFixture,
   throttledIdle,
-} = require('../helpers')
+} = require('./helpers')
 
-test('Indexes all items already in a core', async (t) => {
-  const cores = await createMultiple(5)
+/** @typedef {import('../lib/types').Entry<'binary'>} Entry */
+
+only('Indexes all items already in a core', async (t) => {
+  const cores = await createMultiple(2)
+  /** @type {Entry[]} */
   const expected = []
-  const indexStreams = []
   for (const [i, core] of cores.entries()) {
-    const blocks = generateFixture(0, 1000)
+    const blocks = generateFixture(0, 10)
     await core.append(blocks)
     expected.push.apply(expected, blocksToExpected(blocks, core.key))
-    indexStreams.push(new CoreIndexStream(core, ram()))
   }
+  /** @type {Entry[]} */
   const entries = []
-  const stream = new MultiCoreIndexStream(indexStreams, { highWaterMark: 10 })
-  const ws = new Writable({
-    writev: (data, cb) => {
+  const indexer = new MultiCoreIndexer(cores, {
+    batch: async (data) => {
+      console.log('Batch:', data.length)
       entries.push(...data)
-      cb()
     },
+    storage: () => ram(),
   })
-  stream.pipe(ws)
-  await throttledIdle(stream)
-  t.same(sortEntries(entries), sortEntries(expected))
-  t.not(entries.length, 0, 'has entries')
-  stream.destroy()
-  // Need the noop catch here because once() will reject if the source emits an
-  // error event while waiting, and the destroy() bubbles up an error in the
-  // writestream
-  await once(ws, 'close').catch(() => {})
+  await once(indexer, 'idle')
+  logEntries(entries)
+  t.equal(entries.length, expected.length)
+  // t.same(sortEntries(entries), sortEntries(expected))
+  await new Promise((resolve) => setTimeout(resolve, 5000))
+  t.equal(entries.length, expected.length)
   t.pass('Stream destroyed and closed')
 })
 
@@ -176,43 +174,43 @@ test('Maintains index state', async (t) => {
   t.same(sortEntries(entries), sortEntries(expected))
 })
 
-// test("'indexing' and 'idle' events are paired", async (t) => {
-//   const coreCount = 5
-//   const localCores = await createMultiple(coreCount)
-//   const remoteCores = Array(coreCount)
-//   for (const [i, core] of localCores.entries()) {
-//     const blocks = generateFixture(0, 50)
-//     await core.append(blocks)
-//     expected.push.apply(expected, blocksToExpected(blocks, core.key))
-//     const remote = (remoteCores[i] = await create(core.key))
-//     replicate(core, remote, t)
-//     await remote.update()
-//     const range = remote.download({ start: 0, end: remote.length })
-//     await range.downloaded()
-//   }
-//   const indexStreams = remoteCores.map(
-//     (core) => new CoreIndexStream(core, ram())
-//   )
-//   const entries = []
-//   const stream = new MultiCoreIndexStream(indexStreams, { highWaterMark: 10 })
-//   stream.on('data', (entry) => entries.push(entry))
-//   await throttledIdle(stream)
+test("'indexing' and 'idle' events are paired", async (t) => {
+  const coreCount = 5
+  const localCores = await createMultiple(coreCount)
+  const remoteCores = Array(coreCount)
+  for (const [i, core] of localCores.entries()) {
+    const blocks = generateFixture(0, 50)
+    await core.append(blocks)
+    expected.push.apply(expected, blocksToExpected(blocks, core.key))
+    const remote = (remoteCores[i] = await create(core.key))
+    replicate(core, remote, t)
+    await remote.update()
+    const range = remote.download({ start: 0, end: remote.length })
+    await range.downloaded()
+  }
+  const indexStreams = remoteCores.map(
+    (core) => new CoreIndexStream(core, ram())
+  )
+  const entries = []
+  const stream = new MultiCoreIndexStream(indexStreams, { highWaterMark: 10 })
+  stream.on('data', (entry) => entries.push(entry))
+  await throttledIdle(stream)
 
-//   t.same(sortEntries(entries), sortEntries(expected))
+  t.same(sortEntries(entries), sortEntries(expected))
 
-//   for (const [i, remote] of remoteCores.entries()) {
-//     const range = remote.download({ start: 50, end: -1 })
-//     const blocks = generateFixture(50, 100)
-//     await localCores[i].append(blocks)
-//     expected.push.apply(
-//       expected,
-//       blocksToExpected(blocks, localCores[i].key, 50)
-//     )
-//   }
-//   await throttledIdle(stream)
+  for (const [i, remote] of remoteCores.entries()) {
+    const range = remote.download({ start: 50, end: -1 })
+    const blocks = generateFixture(50, 100)
+    await localCores[i].append(blocks)
+    expected.push.apply(
+      expected,
+      blocksToExpected(blocks, localCores[i].key, 50)
+    )
+  }
+  await throttledIdle(stream)
 
-//   t.same(sortEntries(entries), sortEntries(expected))
-// })
+  t.same(sortEntries(entries), sortEntries(expected))
+})
 
 /**
  *

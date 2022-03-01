@@ -10,7 +10,8 @@ export interface IndexState {
 
 export interface IndexEvents {
   'index-state': (state: IndexState) => void
-  indexed: () => void
+  indexing: () => void
+  idle: () => void
 }
 
 export type IndexStreamEvents<T> = ReadableEvents<T> & IndexEvents

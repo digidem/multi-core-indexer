@@ -28,6 +28,7 @@ module.exports = {
   },
   generateFixture,
   BLOCK_LENGTH,
+  throttledIdle,
 }
 
 /**
@@ -46,4 +47,30 @@ function generateFixture(start, end) {
     )
   }
   return blocks
+}
+
+/**
+ * The index stream can become momentarily idle between reads and
+ * appends/downloads of new data. This throttle idle will resolve only when the
+ * stream has remained idle for > 200ms
+ * @param {CoreIndexStream} emitter
+ * @returns {Promise<void>}
+ */
+async function throttledIdle(emitter) {
+  return new Promise((resolve) => {
+    /** @type {ReturnType<setTimeout>} */
+    let timeoutId
+    emitter.on('idle', function onIdle() {
+      clearTimeout(timeoutId)
+      timeoutId = setTimeout(() => {
+        emitter.off('idle', onIdle)
+        emitter.off('indexing', onIndexing)
+        resolve()
+      }, 200)
+    })
+    emitter.on('indexing', onIndexing)
+    function onIndexing() {
+      clearTimeout(timeoutId)
+    }
+  })
 }

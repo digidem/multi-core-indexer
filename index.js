@@ -3,6 +3,7 @@ const { Writable } = require('streamx')
 const { TypedEmitter } = require('tiny-typed-emitter')
 const { once } = require('events')
 const raf = require('random-access-file')
+const log = require('debug')('multi-core-indexer')
 const { CoreIndexStream } = require('./lib/core-index-stream')
 const { MultiCoreIndexStream } = require('./lib/multi-core-index-stream')
 const { defaultByteLength } = require('./lib/utils')
@@ -13,6 +14,7 @@ const DEFAULT_BATCH_SIZE = 16384
 const MOVING_AVG_FACTOR = 3
 const kHandleEntries = Symbol('handleEntries')
 const kEmitState = Symbol('emitState')
+const kHandleIndexing = Symbol('handleIndexing')
 
 /** @typedef {string | ((name: string) => import('random-access-storage'))} StorageParam */
 /** @typedef {import('./lib/types').ValueEncoding} ValueEncoding */
@@ -30,7 +32,7 @@ class MultiCoreIndexer extends TypedEmitter {
   #writeStream
   #batch
   /** @type {import('./lib/types').IndexStateCurrent} */
-  #state = 'indexing'
+  #state = 'idle'
   #lastRemaining = -1
   #rateMeasurementStart = Date.now()
   #rate = 0
@@ -63,20 +65,21 @@ class MultiCoreIndexer extends TypedEmitter {
     this.#batch = batch
     this.#writeStream = /** @type {Writable<Entry<T>>} */ (
       new Writable({
-        writev: (entries, cb) =>
-          this[kHandleEntries](entries).then(() => cb(), cb),
-        highWaterMark: maxBatch,
-        byteLength,
+        writev: (entries, cb) => {
+          this[kHandleEntries](entries).then(() => cb(), cb)
+        },
       })
     )
-    this.#indexStream.on('index-state', (state) =>
-      this.emit('index-state', state)
-    )
-    this.#indexStream.once('indexed', () => this[kEmitState]())
     this.#indexStream.pipe(this.#writeStream)
+    this[kHandleIndexing] = this[kHandleIndexing].bind(this)
+    // This is needed because the source streams can start indexing before this
+    // stream starts reading data. This ensures that the indexing state is
+    // emitted when the source cores first append / download data
+    this.#indexStream.on('indexing', this[kHandleIndexing])
   }
 
   async destroy() {
+    this.#indexStream.off('indexing', this[kHandleIndexing])
     this.#writeStream.destroy()
     this.#indexStream.destroy()
     return Promise.all([
@@ -87,6 +90,7 @@ class MultiCoreIndexer extends TypedEmitter {
 
   /** @param {Entry<T>[]} entries */
   async [kHandleEntries](entries) {
+    log('HANDLE ENTRIES', entries.length)
     this[kEmitState](entries.length)
     if (!entries.length) return // not sure this is necessary, but better safe than sorry
     await this.#batch(entries)
@@ -102,19 +106,24 @@ class MultiCoreIndexer extends TypedEmitter {
     this[kEmitState]()
   }
 
+  [kHandleIndexing]() {
+    if (this.#state === 'indexing') return
+    this[kEmitState]()
+  }
+
   [kEmitState](processing = 0) {
     const remaining = this.#indexStream.remaining + processing
     if (remaining === this.#lastRemaining) return
     this.#lastRemaining = remaining
-    if (remaining > 0 && this.#state === 'idle') {
-      // switch from idle to indexing --> start measuring rate
-      // TODO: This will only currently be triggered after the batch function is
-      // called, so it will the rate will not measure the first batch of reads
-      // after an idle period. Need an "index-start" event bubbled up from the
-      // index streams to know when "indexing" is actually started.
+    const prevState = this.#state
+    this.#state = remaining === 0 ? 'idle' : 'indexing'
+    if (this.#state === 'indexing' && prevState === 'idle') {
+      this.emit('indexing')
       this.#rateMeasurementStart = Date.now()
     }
-    this.#state = remaining === 0 ? 'idle' : 'indexing'
+    if (this.#state === 'idle' && prevState === 'indexing') {
+      this.emit('idle')
+    }
     this.emit('index-state', {
       current: this.#state,
       remaining,
@@ -127,7 +136,7 @@ class MultiCoreIndexer extends TypedEmitter {
    * @param {StorageParam} storage
    * @returns {(name: string) => import('random-access-storage')}
    */
-  static defaultStorage(storage, opts = {}) {
+  static defaultStorage(storage) {
     if (typeof storage !== 'string') return storage
     const directory = storage
     return function createFile(name) {
@@ -136,4 +145,4 @@ class MultiCoreIndexer extends TypedEmitter {
   }
 }
 
-exports = module.exports = MultiCoreIndexer
+module.exports = MultiCoreIndexer
