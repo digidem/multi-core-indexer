@@ -137,7 +137,11 @@ underlying storage - it is up to the consumer to do that.
 _Required_\
 Type: `(indexState: { current: 'idle' | 'indexing', remaining: number, entriesPerSecond: number }) => void`
 
-Event listener for the current indexing state
+Event listener for the current indexing state. `entriesPerSecond` is the current
+average number of entries being processed per second. This is calculated as a
+moving average with a decay factor of 5. `remaining` is the number of entries
+remaining to index. To estimate time remaining in seconds, use
+`remaining / entriesPerSecond`.
 
 ### indexer.on('indexing', handler)
 
@@ -146,8 +150,8 @@ Event listener for the current indexing state
 _Required_\
 Type: `() => void`
 
-Event listener for when the indexer starts indexing (e.g. when unindexed blocks
-become available, either through an append or a download).
+Event listener for when the indexer re-starts indexing (e.g. when unindexed
+blocks become available, either through an append or a download).
 
 ### indexer.on('idle', handler)
 
@@ -157,6 +161,9 @@ _Required_\
 Type: `() => void`
 
 Event listener for when the indexer has completed indexing of available data.
+**Note**: During sync this can be emitted before sync is complete because the
+indexer has caught up with currently downloaded data, and the indexer will start
+indexing again as new data is downloaded.
 
 ## Maintainers
 

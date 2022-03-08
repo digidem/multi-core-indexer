@@ -246,3 +246,49 @@ test('Batches smaller than maxBatch when indexing is faster than hypercore reads
   )
   await indexer.close()
 })
+
+only('sync state / progress', async (t) => {
+  const expectedVariation = 0.2
+  const numberOfCores = 5
+  const entriesPerCore = 1000
+  const cores = await createMultiple(numberOfCores)
+  await generateFixtures(cores, entriesPerCore)
+  /** @type {import('../').IndexState[]} */
+  const stateEvents = []
+  const start = Date.now()
+  const indexer = new MultiCoreIndexer(cores, {
+    batch: async (data) => {
+      // Simulate a batch function whose duration changes linearly with batch size
+      await new Promise((res) => setTimeout(res, data.length))
+    },
+    storage: () => ram(),
+  })
+  indexer.on('index-state', (state) => stateEvents.push(state))
+  await throttledIdle(indexer)
+  const actualRate =
+    (numberOfCores * entriesPerCore * 1000) / (Date.now() - start)
+  t.ok(stateEvents.length > 10, 'At least 10 index-state events')
+  t.same(stateEvents[0], {
+    entriesPerSecond: 0,
+    remaining: numberOfCores * entriesPerCore,
+    current: 'indexing',
+  })
+  // Ends with idle and 0 remaining
+  t.equal(stateEvents[stateEvents.length - 1].current, 'idle')
+  t.equal(stateEvents[stateEvents.length - 1].remaining, 0)
+  t.ok(
+    // Ignore first two events, as they are not representative of the actual rate
+    stateEvents.slice(2).every((state) => {
+      return (
+        Math.abs(state.entriesPerSecond - actualRate) / actualRate <=
+        expectedVariation
+      )
+    }),
+    `state.entriesPerSecond is within ${
+      expectedVariation * 100
+    }% of actual rate`
+  )
+
+  await indexer.close()
+  t.pass('Indexer closed')
+})

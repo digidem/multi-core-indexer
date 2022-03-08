@@ -10,13 +10,14 @@ const { MultiCoreIndexStream } = require('./lib/multi-core-index-stream')
 const DEFAULT_BATCH_SIZE = 100
 // The indexing rate (in entries per second) is calculated as an exponential
 // moving average. A factor > 1 will put more weight on previous values.
-const MOVING_AVG_FACTOR = 3
+const MOVING_AVG_FACTOR = 5
 const kHandleEntries = Symbol('handleEntries')
 const kEmitState = Symbol('emitState')
 const kHandleIndexing = Symbol('handleIndexing')
 
 /** @typedef {string | ((name: string) => import('random-access-storage'))} StorageParam */
 /** @typedef {import('./lib/types').ValueEncoding} ValueEncoding */
+/** @typedef {import('./lib/types').IndexState} IndexState */
 /**
  * @template {ValueEncoding} [T='binary']
  * @typedef {import('./lib/types').Entry<T>} Entry
@@ -59,7 +60,7 @@ class MultiCoreIndexer extends TypedEmitter {
     this.#writeStream = /** @type {Writable<Entry<T>>} */ (
       new Writable({
         writev: (entries, cb) => {
-          // @ts-ignre - I don't know why TS does not like this
+          // @ts-ignore - I don't know why TS does not like this
           this[kHandleEntries](entries).then(() => cb(), cb)
         },
         highWaterMark: maxBatch,
@@ -92,9 +93,10 @@ class MultiCoreIndexer extends TypedEmitter {
     const batchTime = Date.now() - this.#rateMeasurementStart
     // Current rate entries per second
     const rate = entries.length / (batchTime / 1000)
+    const prevRate = this.#rate
     // Moving average rate - use current rate if this is the first measurement
     this.#rate =
-      rate + this.#rate > 0 ? (this.#rate - rate) / MOVING_AVG_FACTOR : 0
+      rate + (this.#rate > 0 ? (this.#rate - rate) / MOVING_AVG_FACTOR : 0)
     // Set this at the end of batch rather than start so the timing also
     // includes the reads from the index streams
     this.#rateMeasurementStart = Date.now()
