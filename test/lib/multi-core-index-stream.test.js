@@ -7,22 +7,18 @@ const { Writable } = require('streamx')
 const {
   create,
   replicate,
-  generateFixture,
+  createMultiple,
+  generateFixtures,
   throttledIdle,
+  sortEntries,
 } = require('../helpers')
 
 test('Indexes all items already in a core', async (t) => {
   const cores = await createMultiple(5)
-  const expected = []
-  const indexStreams = []
-  for (const [i, core] of cores.entries()) {
-    const blocks = generateFixture(0, 1000)
-    await core.append(blocks)
-    expected.push.apply(expected, blocksToExpected(blocks, core.key))
-    indexStreams.push(new CoreIndexStream(core, ram()))
-  }
+  const expected = await generateFixtures(cores, 1000)
+  const indexStreams = cores.map((core) => new CoreIndexStream(core, ram()))
   const entries = []
-  const stream = new MultiCoreIndexStream(indexStreams, { highWaterMark: 10 })
+  const stream = new MultiCoreIndexStream(indexStreams)
   const ws = new Writable({
     writev: (data, cb) => {
       entries.push(...data)
@@ -41,20 +37,73 @@ test('Indexes all items already in a core', async (t) => {
   t.pass('Stream destroyed and closed')
 })
 
+test('Adding index streams after initialization', async (t) => {
+  const cores = await createMultiple(3)
+  const expected = await generateFixtures(cores, 100)
+  const indexStreams = cores.map((core) => new CoreIndexStream(core, ram()))
+  const entries = []
+  const stream = new MultiCoreIndexStream(indexStreams.slice(0, 2))
+  stream.addStream(indexStreams[2])
+  // Check re-adding a stream that is already being indexed is a no-op
+  stream.addStream(indexStreams[1])
+  const ws = new Writable({
+    writev: (data, cb) => {
+      entries.push(...data)
+      cb()
+    },
+  })
+  stream.pipe(ws)
+  await throttledIdle(stream)
+  t.same(sortEntries(entries), sortEntries(expected))
+  t.not(entries.length, 0, 'has entries')
+  stream.destroy()
+  // Need the noop catch here because once() will reject if the source emits an
+  // error event while waiting, and the destroy() bubbles up an error in the
+  // writestream
+  await once(ws, 'close').catch(() => {})
+  t.pass('Stream destroyed and closed')
+})
+
+test('.remaining is as expected', async (t) => {
+  const coreCount = 5
+  const blockCount = 100
+  const cores = await createMultiple(coreCount)
+  const expected = await generateFixtures(cores, blockCount)
+  const indexStreams = cores.map((core) => new CoreIndexStream(core, ram()))
+  const entries = []
+  const stream = new MultiCoreIndexStream(indexStreams, { highWaterMark: 10 })
+  const ws = new Writable({
+    writev: (data, cb) => {
+      entries.push(...data)
+      t.equal(
+        stream.remaining,
+        coreCount * blockCount - entries.length,
+        'got expected .remaining'
+      )
+      cb()
+    },
+  })
+  stream.pipe(ws)
+  await throttledIdle(stream)
+  t.same(sortEntries(entries), sortEntries(expected))
+  t.not(entries.length, 0, 'has entries')
+  stream.destroy()
+  // Need the noop catch here because once() will reject if the source emits an
+  // error event while waiting, and the destroy() bubbles up an error in the
+  // writestream
+  await once(ws, 'close').catch(() => {})
+  t.pass('Stream destroyed and closed')
+})
+
 test('Indexes items appended after initial index', async (t) => {
   const cores = await createMultiple(5)
-  const expected = []
   const indexStreams = cores.map((core) => new CoreIndexStream(core, ram()))
   const entries = []
   const stream = new MultiCoreIndexStream(indexStreams, { highWaterMark: 10 })
   stream.on('data', (entry) => entries.push(entry))
   await throttledIdle(stream)
   t.same(entries, [], 'no entries before append')
-  for (const [i, core] of cores.entries()) {
-    const blocks = generateFixture(0, 100)
-    await core.append(blocks)
-    expected.push.apply(expected, blocksToExpected(blocks, core.key))
-  }
+  const expected = await generateFixtures(cores, 100)
   await throttledIdle(stream)
   t.same(sortEntries(entries), sortEntries(expected))
   stream.destroy()
@@ -70,16 +119,9 @@ test('index sparse hypercores', async (t) => {
   const indexStreams = []
   const remoteCores = Array(coreCount)
   for (const [i, core] of localCores.entries()) {
-    const blocks = generateFixture(0, 100)
-    await core.append(blocks)
-    expected.push.apply(
-      expected,
-      blocksToExpected(blocks, core.key).slice(5, 20)
-    )
-    expected2.push.apply(
-      expected2,
-      blocksToExpected(blocks, core.key).slice(50, 60)
-    )
+    const fixture = await generateFixtures([core], 100)
+    expected.push.apply(expected, fixture.slice(5, 20))
+    expected2.push.apply(expected2, fixture.slice(50, 60))
     remoteCores[i] = await create(core.key)
     replicate(core, remoteCores[i], t)
   }
@@ -109,13 +151,10 @@ test('index sparse hypercores', async (t) => {
 test('Appends from a replicated core are indexed', async (t) => {
   const coreCount = 5
   const localCores = await createMultiple(coreCount)
-  const expected = []
+  const expected1 = await generateFixtures(localCores, 50)
   const indexStreams = []
   const remoteCores = Array(coreCount)
   for (const [i, core] of localCores.entries()) {
-    const blocks = generateFixture(0, 50)
-    await core.append(blocks)
-    expected.push.apply(expected, blocksToExpected(blocks, core.key))
     const remote = (remoteCores[i] = await create(core.key))
     replicate(core, remoteCores[i], t)
     await remote.update()
@@ -128,30 +167,24 @@ test('Appends from a replicated core are indexed', async (t) => {
   stream.on('data', (entry) => entries.push(entry))
   await throttledIdle(stream)
 
-  t.same(sortEntries(entries), sortEntries(expected))
+  t.same(sortEntries(entries), sortEntries(expected1))
 
-  for (const [i, remote] of remoteCores.entries()) {
-    const range = remote.download({ start: 50, end: -1 })
-    const blocks = generateFixture(50, 100)
-    await localCores[i].append(blocks)
-    expected.push.apply(
-      expected,
-      blocksToExpected(blocks, localCores[i].key, 50)
-    )
+  const expected2 = await generateFixtures(localCores, 50)
+  for (const remote of remoteCores.values()) {
+    remote.download({ start: 0, end: remote.length })
   }
   await throttledIdle(stream)
 
-  t.same(sortEntries(entries), sortEntries(expected))
+  t.same(sortEntries(entries), sortEntries([...expected1, ...expected2]))
 })
 
 test('Maintains index state', async (t) => {
   const cores = await createMultiple(5)
   const storages = []
-  const expected = []
+  await generateFixtures(cores, 1000)
   const entries = []
 
   for (const core of cores) {
-    await core.append(generateFixture(0, 1000))
     const storage = ram()
     storages.push(storage)
     const indexStream = new CoreIndexStream(core, storage)
@@ -163,99 +196,11 @@ test('Maintains index state', async (t) => {
   const indexStreams = cores.map(
     (core, i) => new CoreIndexStream(core, storages[i])
   )
-  const stream = new MultiCoreIndexStream(indexStreams, { highWaterMark: 10 })
+  const stream = new MultiCoreIndexStream(indexStreams)
   stream.on('data', (entry) => entries.push(entry))
 
-  for (const core of cores) {
-    const blocks = generateFixture(1000, 2000)
-    await core.append(blocks)
-    expected.push.apply(expected, blocksToExpected(blocks, core.key, 1000))
-  }
-
+  const expectedPromise = generateFixtures(cores, 1000)
   await throttledIdle(stream)
+  const expected = await expectedPromise
   t.same(sortEntries(entries), sortEntries(expected))
 })
-
-// test("'indexing' and 'idle' events are paired", async (t) => {
-//   const coreCount = 5
-//   const localCores = await createMultiple(coreCount)
-//   const remoteCores = Array(coreCount)
-//   for (const [i, core] of localCores.entries()) {
-//     const blocks = generateFixture(0, 50)
-//     await core.append(blocks)
-//     expected.push.apply(expected, blocksToExpected(blocks, core.key))
-//     const remote = (remoteCores[i] = await create(core.key))
-//     replicate(core, remote, t)
-//     await remote.update()
-//     const range = remote.download({ start: 0, end: remote.length })
-//     await range.downloaded()
-//   }
-//   const indexStreams = remoteCores.map(
-//     (core) => new CoreIndexStream(core, ram())
-//   )
-//   const entries = []
-//   const stream = new MultiCoreIndexStream(indexStreams, { highWaterMark: 10 })
-//   stream.on('data', (entry) => entries.push(entry))
-//   await throttledIdle(stream)
-
-//   t.same(sortEntries(entries), sortEntries(expected))
-
-//   for (const [i, remote] of remoteCores.entries()) {
-//     const range = remote.download({ start: 50, end: -1 })
-//     const blocks = generateFixture(50, 100)
-//     await localCores[i].append(blocks)
-//     expected.push.apply(
-//       expected,
-//       blocksToExpected(blocks, localCores[i].key, 50)
-//     )
-//   }
-//   await throttledIdle(stream)
-
-//   t.same(sortEntries(entries), sortEntries(expected))
-// })
-
-/**
- *
- * @param {Buffer[]} blocks
- * @param {Buffer} key
- * @returns
- */
-function blocksToExpected(blocks, key, offset = 0) {
-  return blocks.map((block, i) => ({
-    key,
-    block,
-    index: i + offset,
-  }))
-}
-
-/**
- * @param {number} n
- * @returns {Promise<import('hypercore')[]>}
- */
-async function createMultiple(n) {
-  const cores = []
-  for (let i = 0; i < n; i++) {
-    cores.push(await create())
-  }
-  return cores
-}
-
-function sort(a, b) {
-  const aKey = a.key.toString('hex') + a.block.toString()
-  const bKey = b.key.toString('hex') + b.block.toString()
-  return aKey < bKey ? -1 : aKey > bKey ? 1 : 0
-}
-
-function sortEntries(e) {
-  return e.sort(sort)
-}
-
-function logEntries(e) {
-  console.log(
-    sortEntries(e).map((e) => ({
-      key: e.key.toString('hex'),
-      block: e.block.toString(),
-      index: e.index,
-    }))
-  )
-}

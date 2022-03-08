@@ -7,9 +7,14 @@ const {
   create,
   replicate,
   generateFixture,
-  BLOCK_LENGTH,
   throttledIdle,
 } = require('../helpers')
+
+test('hypercore key', async (t) => {
+  const a = await create()
+  const stream = new CoreIndexStream(a, ram())
+  t.same(stream.key, a.key)
+})
 
 test('Indexes all items already in a core', async (t) => {
   const a = await create()
@@ -18,11 +23,28 @@ test('Indexes all items already in a core', async (t) => {
   await a.append(blocks)
   /** @type {any[]} */
   const entries = []
-  const stream = new CoreIndexStream(a, ram(), {
-    highWaterMark: BLOCK_LENGTH * 4,
-  })
+  const stream = new CoreIndexStream(a, ram())
   stream.on('data', (entry) => entries.push(entry))
   await once(stream, 'idle')
+  t.same(entries, expected)
+})
+
+test('.remaining property is accurate', async (t) => {
+  const totalBlocks = 100
+  const a = await create()
+  const blocks = generateFixture(0, totalBlocks)
+  const expected = blocksToExpected(blocks, a.key)
+  await a.append(blocks)
+  /** @type {any[]} */
+  const entries = []
+  const stream = new CoreIndexStream(a, ram())
+  t.equal(stream.remaining, totalBlocks)
+  stream.on('data', (entry) => {
+    entries.push(entry)
+    t.equal(stream.remaining + entries.length, totalBlocks)
+  })
+  await once(stream, 'idle')
+  t.equal(stream.remaining, 0)
   t.same(entries, expected)
 })
 
@@ -31,9 +53,7 @@ test('Indexes items appended after initial index', async (t) => {
   const blocks = generateFixture(0, 10)
   /** @type {any[]} */
   const entries = []
-  const stream = new CoreIndexStream(a, ram(), {
-    highWaterMark: BLOCK_LENGTH * 4,
-  })
+  const stream = new CoreIndexStream(a, ram())
   stream.on('data', (entry) => entries.push(entry))
   await once(stream, 'idle')
   t.same(entries, [], 'no entries before append')
@@ -54,9 +74,7 @@ test('Readable stream from sparse hypercore', async (t) => {
   const range = b.download({ start: 5, end: 20 })
   await range.downloaded()
 
-  const stream = new CoreIndexStream(b, ram(), {
-    highWaterMark: BLOCK_LENGTH * 4,
-  })
+  const stream = new CoreIndexStream(b, ram())
   /** @type {Buffer[]} */
   const entries = []
   stream.on('data', (entry) => entries.push(entry.block))
@@ -80,9 +98,7 @@ test("'indexing' and 'idle' events are paired", async (t) => {
 
   replicate(a, b, t)
 
-  const stream = new CoreIndexStream(b, ram(), {
-    highWaterMark: BLOCK_LENGTH * 4,
-  })
+  const stream = new CoreIndexStream(b, ram())
   let indexingEvents = 0
   let idleEvents = 0
   stream.on('indexing', () => {
@@ -114,9 +130,7 @@ test('Appends from a replicated core are indexed', async (t) => {
   const range1 = b.download({ start: 0, end: b.length })
   await range1.downloaded()
 
-  const stream = new CoreIndexStream(b, ram(), {
-    highWaterMark: BLOCK_LENGTH * 4,
-  })
+  const stream = new CoreIndexStream(b, ram())
   /** @type {Buffer[]} */
   const entries = []
   stream.on('data', (entry) => entries.push(entry.block))
@@ -137,9 +151,7 @@ test('Maintains index state', async (t) => {
   /** @type {any[]} */
   const entries = []
   const storage = ram()
-  const stream1 = new CoreIndexStream(a, storage, {
-    highWaterMark: BLOCK_LENGTH * 4,
-  })
+  const stream1 = new CoreIndexStream(a, storage)
   stream1.on('data', (entry) => entries.push(entry.block))
 
   const blocks = generateFixture(0, 1000)

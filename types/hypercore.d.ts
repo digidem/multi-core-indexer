@@ -1,6 +1,7 @@
 declare module 'hypercore' {
   import { TypedEmitter } from 'tiny-typed-emitter'
   import RandomAccessStorage from 'random-access-storage'
+  import { type Duplex } from 'streamx'
 
   interface HypercoreEvents {
     'peer-add'(peer: any): void
@@ -66,6 +67,10 @@ declare module 'hypercore' {
           ? any
           : unknown)
     >
+    replicate(
+      isInitiatorOrReplicationStream: boolean | Duplex,
+      opts?: { keepAlive?: boolean }
+    ): Duplex
   }
 
   export = Hypercore
