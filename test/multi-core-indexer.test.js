@@ -201,3 +201,48 @@ test('Maintains index state (file storage)', async (t) => {
     t.pass('Indexer closed')
   })
 })
+
+test('Entries are batched to batchMax when indexing is slower than Hypercore reads', async (t) => {
+  const cores = await createMultiple(5)
+  await generateFixtures(cores, 500)
+
+  for (const batchSize of [50, 100, 500]) {
+    /** @type {number[]} */
+    const batchSizes = []
+    const indexer = new MultiCoreIndexer(cores, {
+      batch: async (data) => {
+        batchSizes.push(data.length)
+        await new Promise((res) => setTimeout(res, 50))
+      },
+      maxBatch: batchSize,
+      storage: () => ram(),
+    })
+    await throttledIdle(indexer)
+    t.ok(
+      batchSizes.filter((size) => size < batchSize).length <= 2,
+      `Most batches are ${batchSize}`
+    )
+    await indexer.close()
+  }
+})
+
+test('Batches smaller than maxBatch when indexing is faster than hypercore reads', async (t) => {
+  const cores = await createMultiple(5)
+  await generateFixtures(cores, 500)
+  const batchSize = 1000
+  /** @type {number[]} */
+  const batchSizes = []
+  const indexer = new MultiCoreIndexer(cores, {
+    batch: async (data) => {
+      batchSizes.push(data.length)
+    },
+    maxBatch: batchSize,
+    storage: () => ram(),
+  })
+  await throttledIdle(indexer)
+  t.ok(
+    batchSizes.every((size) => size < batchSize),
+    `All batches are smaller than maxBatch`
+  )
+  await indexer.close()
+})
