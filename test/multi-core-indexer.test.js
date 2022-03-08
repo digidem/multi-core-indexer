@@ -2,9 +2,7 @@
 const MultiCoreIndexer = require('../')
 const { test, only } = require('tap')
 const { once } = require('events')
-const log = require('debug')('test')
 const ram = require('random-access-memory')
-const path = require('path')
 const {
   create,
   replicate,

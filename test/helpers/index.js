@@ -15,6 +15,7 @@ module.exports = {
   createMultiple,
   throttledIdle,
   sortEntries,
+  logEntries,
 }
 
 /**

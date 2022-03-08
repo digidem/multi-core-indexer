@@ -3,7 +3,7 @@ const { Writable } = require('streamx')
 const { TypedEmitter } = require('tiny-typed-emitter')
 const { once } = require('events')
 const raf = require('random-access-file')
-const log = require('debug')('multi-core-indexer')
+// const log = require('debug')('multi-core-indexer')
 const { CoreIndexStream } = require('./lib/core-index-stream')
 const { MultiCoreIndexStream } = require('./lib/multi-core-index-stream')
 
@@ -93,7 +93,6 @@ class MultiCoreIndexer extends TypedEmitter {
     const batchTime = Date.now() - this.#rateMeasurementStart
     // Current rate entries per second
     const rate = entries.length / (batchTime / 1000)
-    const prevRate = this.#rate
     // Moving average rate - use current rate if this is the first measurement
     this.#rate =
       rate + (this.#rate > 0 ? (this.#rate - rate) / MOVING_AVG_FACTOR : 0)

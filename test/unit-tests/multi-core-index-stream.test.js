@@ -1,6 +1,6 @@
 const { CoreIndexStream } = require('../../lib/core-index-stream')
 const { MultiCoreIndexStream } = require('../../lib/multi-core-index-stream')
-const { test, only } = require('tap')
+const { test } = require('tap')
 const { once } = require('events')
 const ram = require('random-access-memory')
 const { Writable } = require('streamx')
