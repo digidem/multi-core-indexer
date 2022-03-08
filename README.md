@@ -1,7 +1,7 @@
 # multi-core-indexer
 
-**⚠️ This currently does not work. This is an Alpha release and the API will
-likely change. Do not use in production. ⚠️**
+**⚠️ This is an Alpha release and the API will likely change. Do not use in
+production. ⚠️**
 
 Index one or more
 [hypercores](https://github.com/hypercore-protocol/hypercore-next)
@@ -86,6 +86,10 @@ batch will not be called until `batch()` resolves. Entries will be queued (and
 batched) as fast as they can be read, up to `opts.maxBatch`. `block` is the
 block of data from the hypercore, `key` is the public key where the `block` is
 from, and `index` is the index of the `block` within the hypercore.
+
+**Note:** Currently if `batch` throws an error, things will break, and the
+entries will still be persisted as indexed. This will be fixed in a later
+release.
 
 #### opts.storage
 
