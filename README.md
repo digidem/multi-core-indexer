@@ -1,5 +1,9 @@
 # multi-core-indexer
 
+[![Node.js CI](https://github.com/digidem/multi-core-indexer/workflows/Node.js%20CI/badge.svg)](https://github.com/digidem/multi-core-indexer/actions/workflows/node.js.yml)
+[![Coverage Status](https://coveralls.io/repos/github/digidem/multi-core-indexer/badge.svg)](https://coveralls.io/github/digidem/multi-core-indexer)
+[![Npm package version](https://img.shields.io/npm/v/multi-core-indexer)](https://npmjs.com/package/multi-core-indexer)
+
 **⚠️ This is an Alpha release and the API will likely change. Do not use in
 production. ⚠️**
 
