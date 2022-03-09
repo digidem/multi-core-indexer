@@ -16,6 +16,7 @@ module.exports = {
   throttledIdle,
   sortEntries,
   logEntries,
+  blocksToExpected,
 }
 
 /**
