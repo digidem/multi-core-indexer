@@ -1,6 +1,6 @@
 // @ts-check
 const MultiCoreIndexer = require('../')
-const { test, only } = require('tap')
+const { test } = require('tap')
 const { once } = require('events')
 const ram = require('random-access-memory')
 const {
@@ -44,6 +44,29 @@ test('Indexes items appended after initial index', async (t) => {
     storage: () => ram(),
   })
   const expected = await generateFixtures(cores, 100)
+  await throttledIdle(indexer)
+  t.same(sortEntries(entries), sortEntries(expected))
+  await indexer.close()
+  t.pass('Indexer closed')
+})
+
+test('Indexes items appended after initial index', async (t) => {
+  const cores = await createMultiple(5)
+  /** @type {Entry[]} */
+  const entries = []
+  const indexer = new MultiCoreIndexer(cores, {
+    batch: async (data) => {
+      entries.push(...data)
+    },
+    maxBatch: 50,
+    storage: () => ram(),
+  })
+
+  const newCores = await createMultiple(5)
+  for (const core of newCores) {
+    indexer.addCore(core)
+  }
+  const expected = await generateFixtures([...cores, ...newCores], 100)
   await throttledIdle(indexer)
   t.same(sortEntries(entries), sortEntries(expected))
   await indexer.close()
@@ -245,7 +268,7 @@ test('Batches smaller than maxBatch when indexing is faster than hypercore reads
   await indexer.close()
 })
 
-only('sync state / progress', async (t) => {
+test('sync state / progress', async (t) => {
   const expectedVariation = 0.2
   const numberOfCores = 5
   const entriesPerCore = 1000

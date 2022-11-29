@@ -37,6 +37,7 @@ class MultiCoreIndexer extends TypedEmitter {
   #lastRemaining = -1
   #rateMeasurementStart = Date.now()
   #rate = 0
+  #createStorage
 
   /**
    *
@@ -48,9 +49,9 @@ class MultiCoreIndexer extends TypedEmitter {
    */
   constructor(cores, { batch, maxBatch = DEFAULT_BATCH_SIZE, storage }) {
     super()
-    const createStorage = MultiCoreIndexer.defaultStorage(storage)
+    this.#createStorage = MultiCoreIndexer.defaultStorage(storage)
     const coreIndexStreams = cores.map((core) => {
-      const storage = createStorage(core.key.toString('hex'))
+      const storage = this.#createStorage(core.key.toString('hex'))
       return new CoreIndexStream(core, storage)
     })
     this.#indexStream = new MultiCoreIndexStream(coreIndexStreams, {
@@ -72,6 +73,16 @@ class MultiCoreIndexer extends TypedEmitter {
     // stream starts reading data. This ensures that the indexing state is
     // emitted when the source cores first append / download data
     this.#indexStream.on('indexing', this.#handleIndexingBound)
+  }
+
+  /**
+   * Add a core to be indexed
+   * @param {import('hypercore')<T>} core
+   */
+  addCore(core) {
+    const storage = this.#createStorage(core.key.toString('hex'))
+    const coreIndexStream = new CoreIndexStream(core, storage)
+    this.#indexStream.addStream(coreIndexStream)
   }
 
   async close() {
