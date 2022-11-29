@@ -1,6 +1,6 @@
 // @ts-check
 const MultiCoreIndexer = require('../')
-const { test } = require('tap')
+const { test, only } = require('tap')
 const { once } = require('events')
 const ram = require('random-access-memory')
 const {
@@ -50,7 +50,7 @@ test('Indexes items appended after initial index', async (t) => {
   t.pass('Indexer closed')
 })
 
-test('Indexes items appended after initial index', async (t) => {
+only('Indexes cores added with addCore method', async (t) => {
   const cores = await createMultiple(5)
   /** @type {Entry[]} */
   const entries = []
@@ -61,14 +61,16 @@ test('Indexes items appended after initial index', async (t) => {
     maxBatch: 50,
     storage: () => ram(),
   })
-
+  const initialExpected = await generateFixtures(cores, 100)
+  await throttledIdle(indexer)
+  t.same(sortEntries(entries), sortEntries(initialExpected))
   const newCores = await createMultiple(5)
   for (const core of newCores) {
     indexer.addCore(core)
   }
   const expected = await generateFixtures([...cores, ...newCores], 100)
   await throttledIdle(indexer)
-  t.same(sortEntries(entries), sortEntries(expected))
+  t.same(sortEntries(entries), sortEntries([...initialExpected, ...expected]))
   await indexer.close()
   t.pass('Indexer closed')
 })
