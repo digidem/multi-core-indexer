@@ -12,7 +12,7 @@ nanobench('Index 20 cores of 1000 blocks (10 times)', async (b) => {
   const storages = new Map()
 
   function createStorage(key) {
-    const storage = storages.get(key) || ram()
+    const storage = storages.get(key) || new ram()
     storages.set(key, storage)
     return storage
   }

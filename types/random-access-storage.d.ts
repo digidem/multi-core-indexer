@@ -33,8 +33,12 @@ declare module 'random-access-storage' {
 
 declare module 'random-access-memory' {
   import RandomAccessStorage from 'random-access-storage'
-  function ram(): RandomAccessStorage
-  export = ram
+
+  class RandomAccessMemory extends RandomAccessStorage {
+    constructor()
+  }
+
+  export = RandomAccessMemory
 }
 
 declare module 'random-access-file' {
@@ -43,8 +47,6 @@ declare module 'random-access-file' {
   class RandomAccessFile extends RandomAccessStorage {
     constructor(name: string, opts: { directory: string })
   }
-  function raf(
-    ...args: ConstructorParameters<typeof RandomAccessFile>
-  ): RandomAccessFile
-  export = raf
+
+  export = RandomAccessFile
 }
