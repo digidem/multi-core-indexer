@@ -76,6 +76,17 @@ class MultiCoreIndexer extends TypedEmitter {
   }
 
   /**
+   * @type {IndexState}
+   */
+  get state() {
+    return {
+      current: this.#state,
+      entriesPerSecond: this.#rate,
+      remaining: this.#lastRemaining,
+    }
+  }
+
+  /**
    * Add a core to be indexed
    * @param {import('hypercore')<T>} core
    */
