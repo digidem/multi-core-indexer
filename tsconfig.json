@@ -1,19 +1,18 @@
 {
   "compilerOptions": {
-    "target": "es2019",
-    "lib": ["es2020", "dom"],
+    "target": "es2021",
+    "lib": ["es2021", "dom"],
     "strict": true,
     "esModuleInterop": true,
-    "resolveJsonModule": true,
-    "module": "es2020",
-    "moduleResolution": "node",
+    "module": "CommonJS",
+    "moduleResolution": "Node",
     "allowJs": true,
     "checkJs": false,
     "declaration": true,
     "emitDeclarationOnly": true,
-    "outDir": "./dist",
-    "typeRoots": ["types", "node_modules/@types"]
+    "declarationMap": true,
+    "declarationDir": "types",
+    "typeRoots": ["./vendor/types", "./node_modules/@types"]
   },
-  "include": ["**/*"],
-  "exclude": ["node_modules", "dist/**/*"]
+  "include": ["index.js"]
 }
