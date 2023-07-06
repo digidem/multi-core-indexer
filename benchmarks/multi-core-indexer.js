@@ -24,7 +24,7 @@ nanobench('Index 20 cores of 1000 blocks (10 times)', async (b) => {
         await new Promise((res) => setTimeout(res, 10))
       },
       maxBatch: 500,
-      storage: () => ram(),
+      storage: () => new ram(),
     })
     await throttledIdle(indexer)
     assert(count === expected.length)

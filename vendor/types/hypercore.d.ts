@@ -1,6 +1,8 @@
 declare module 'hypercore' {
   import { TypedEmitter } from 'tiny-typed-emitter'
   import RandomAccessStorage from 'random-access-storage'
+  import RandomAccessMemory from 'random-access-memory'
+  import RandomAccessFile from 'random-access-file'
   import { type Duplex } from 'streamx'
 
   interface HypercoreEvents {
@@ -32,7 +34,11 @@ declare module 'hypercore' {
     valueEncoding?: ValueEncoding // defaults to the core's valueEncoding
   }
 
-  type HypercoreStorage = string | ((name: string) => RandomAccessStorage)
+  type HypercoreStorage =
+    | string
+    | RandomAccessMemory
+    | RandomAccessFile
+    | RandomAccessStorage
 
   class Hypercore<
     TValueEncoding extends ValueEncoding = 'binary'

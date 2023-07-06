@@ -24,7 +24,7 @@ test('Indexes all items already in a core', async (t) => {
       entries.push(...data)
     },
     maxBatch: 50,
-    storage: () => ram(),
+    storage: () => new ram(),
   })
   await throttledIdle(indexer)
   t.same(sortEntries(entries), sortEntries(expected))
@@ -41,7 +41,7 @@ test('Indexes items appended after initial index', async (t) => {
       entries.push(...data)
     },
     maxBatch: 50,
-    storage: () => ram(),
+    storage: () => new ram(),
   })
   const expected = await generateFixtures(cores, 100)
   await throttledIdle(indexer)
@@ -59,7 +59,7 @@ test('Indexes cores added with addCore method', async (t) => {
       entries.push(...data)
     },
     maxBatch: 50,
-    storage: () => ram(),
+    storage: () => new ram(),
   })
   const initialExpected = await generateFixtures(cores, 100)
   await throttledIdle(indexer)
@@ -100,7 +100,7 @@ test('index sparse hypercores', async (t) => {
     batch: async (data) => {
       entries.push(...data)
     },
-    storage: () => ram(),
+    storage: () => new ram(),
   })
   await throttledIdle(indexer)
 
@@ -134,7 +134,7 @@ test('Appends from a replicated core are indexed', async (t) => {
     batch: async (data) => {
       entries.push(...data)
     },
-    storage: () => ram(),
+    storage: () => new ram(),
   })
   await throttledIdle(indexer)
   t.same(sortEntries(entries), sortEntries(expected1))
@@ -157,7 +157,7 @@ test('Maintains index state (memory storage)', async (t) => {
 
   /** @param {string} key */
   function createStorage(key) {
-    const storage = storages.get(key) || ram()
+    const storage = storages.get(key) || new ram()
     storages.set(key, storage)
     return storage
   }
@@ -238,7 +238,7 @@ test('Entries are batched to batchMax when indexing is slower than Hypercore rea
         await new Promise((res) => setTimeout(res, 50))
       },
       maxBatch: batchSize,
-      storage: () => ram(),
+      storage: () => new ram(),
     })
     await throttledIdle(indexer)
     t.ok(
@@ -260,7 +260,7 @@ test('Batches smaller than maxBatch when indexing is faster than hypercore reads
       batchSizes.push(data.length)
     },
     maxBatch: batchSize,
-    storage: () => ram(),
+    storage: () => new ram(),
   })
   await throttledIdle(indexer)
   t.ok(
@@ -284,7 +284,7 @@ test('sync state / progress', async (t) => {
       // Simulate a batch function whose duration changes linearly with batch size
       await new Promise((res) => setTimeout(res, data.length))
     },
-    storage: () => ram(),
+    storage: () => new ram(),
   })
   indexer.on('index-state', (state) => stateEvents.push(state))
   await throttledIdle(indexer)
@@ -323,7 +323,7 @@ test('state getter', async (t) => {
     batch: async (data) => {
       entries.push(...data)
     },
-    storage: () => ram(),
+    storage: () => new ram(),
   })
   t.same(indexer.state.current, 'idle')
   await throttledIdle(indexer)

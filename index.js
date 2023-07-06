@@ -162,7 +162,7 @@ class MultiCoreIndexer extends TypedEmitter {
     if (typeof storage !== 'string') return storage
     const directory = storage
     return function createFile(name) {
-      return raf(name, { directory })
+      return new raf(name, { directory })
     }
   }
 }
