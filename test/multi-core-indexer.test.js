@@ -191,8 +191,8 @@ test('Maintains index state (memory storage)', async (t) => {
 })
 
 test('Maintains index state (file storage)', async (t) => {
-  const { default: tempy } = await import('tempy')
-  await tempy.directory.task(async (dir) => {
+  const { temporaryDirectoryTask } = await import('tempy')
+  await temporaryDirectoryTask(async (dir) => {
     const cores = await createMultiple(5)
     const expected1 = await generateFixtures(cores, 1000)
 
