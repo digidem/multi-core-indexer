@@ -315,3 +315,23 @@ test('sync state / progress', async (t) => {
   await indexer.close()
   t.pass('Indexer closed')
 })
+
+test('state getter', async (t) => {
+  const cores = await createMultiple(2)
+  const entries = []
+  const indexer = new MultiCoreIndexer(cores, {
+    batch: async (data) => {
+      entries.push(...data)
+    },
+    storage: () => ram(),
+  })
+  t.same(indexer.state.current, 'idle')
+  await throttledIdle(indexer)
+  await generateFixtures(cores, 100)
+  t.same(indexer.state.current, 'indexing')
+  await throttledIdle(indexer)
+  t.same(indexer.state.current, 'idle')
+  t.same(entries.length, 200)
+  await indexer.close()
+  t.pass('Indexer closed')
+})

@@ -123,6 +123,12 @@ the value encoding of the underlying Hypercore is `binary` or `utf-8`, this will
 be the byte length of all the blocks in the batch. If the value encoding is
 `json` then this will be the number of entries in a batch.
 
+### indexer.state
+
+Type: `IndexState: { current: 'idle' | 'indexing', remaining: number, entriesPerSecond: number }`
+
+A getter that returns the current `IndexState`, the same as the value emitted by the `index-state` event. This getter is useful for checking the state of the indexer before it has emitted any events.
+
 ### indexer.addCore(core)
 
 #### core

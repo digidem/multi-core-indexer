@@ -94,14 +94,22 @@ async function throttledIdle(emitter) {
   return new Promise((resolve) => {
     /** @type {ReturnType<setTimeout>} */
     let timeoutId
-    emitter.on('idle', function onIdle() {
+
+    /* @ts-ignore: we're using this helper with both MultiCoreIndexer and an indexer stream. checking that the state property exists is sufficient. */
+    if (emitter.state && emitter.state.current === 'idle') {
+      onIdle()
+    }
+
+    function onIdle() {
       clearTimeout(timeoutId)
       timeoutId = setTimeout(() => {
         emitter.off('idle', onIdle)
         emitter.off('indexing', onIndexing)
         resolve()
-      }, 200)
-    })
+      }, 10)
+    }
+
+    emitter.on('idle', onIdle)
     emitter.on('indexing', onIndexing)
     function onIndexing() {
       clearTimeout(timeoutId)

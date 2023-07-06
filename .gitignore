@@ -114,5 +114,5 @@ dist
 .yarn/build-state.yml
 .pnp.*
 
-# Type declarations
-/dist
+# Published type declarations
+/types
