@@ -323,7 +323,7 @@ test('state getter', async (t) => {
     batch: async (data) => {
       entries.push(...data)
     },
-    storage: () => ram(),
+    storage: () => new ram(),
   })
   t.same(indexer.state.current, 'idle')
   await throttledIdle(indexer)
