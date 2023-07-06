@@ -125,7 +125,7 @@ test('Appends from a replicated core are indexed', async (t) => {
   for (const [i, core] of localCores.entries()) {
     const remote = (remoteCores[i] = await create(core.key))
     replicate(core, remoteCores[i], t)
-    await remote.update()
+    await remote.update({ wait: true })
     await remote.download({ start: 0, end: remote.length }).downloaded()
   }
   /** @type {Entry[]} */

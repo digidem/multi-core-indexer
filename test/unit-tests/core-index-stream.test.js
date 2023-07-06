@@ -126,7 +126,7 @@ test('Appends from a replicated core are indexed', async (t) => {
   const b = await create(a.key)
 
   replicate(a, b, t)
-  await b.update()
+  await b.update({ wait: true })
   const range1 = b.download({ start: 0, end: b.length })
   await range1.downloaded()
 
