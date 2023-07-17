@@ -12,7 +12,7 @@
     "emitDeclarationOnly": true,
     "declarationMap": true,
     "declarationDir": "types",
-    "typeRoots": ["./vendor/types", "./node_modules/@types"]
+    "typeRoots": ["./vendor/types", "./node_modules/@types", "./node_modules/@digidem/types/vendor"]
   },
   "include": ["index.js"]
 }
