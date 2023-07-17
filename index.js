@@ -41,7 +41,7 @@ class MultiCoreIndexer extends TypedEmitter {
 
   /**
    *
-   * @param {import('hypercore')<T>[]} cores
+   * @param {import('hypercore')<T, Buffer | string>[]} cores
    * @param {object} opts
    * @param {(entries: Entry<T>[]) => Promise<void>} opts.batch
    * @param {StorageParam} opts.storage
@@ -88,7 +88,7 @@ class MultiCoreIndexer extends TypedEmitter {
 
   /**
    * Add a core to be indexed
-   * @param {import('hypercore')<T>} core
+   * @param {import('hypercore')<T, Buffer | string>} core
    */
   addCore(core) {
     const storage = this.#createStorage(core.key.toString('hex'))
