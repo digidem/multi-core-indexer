@@ -75,8 +75,7 @@ Type: `Array<Hypercore>`
 
 An array of [Hypercores](https://github.com/hypercore-protocol/hypercore-next)
 to index. All Hypercores must share the same value encoding (`binary`, `utf-8`
-or `json`). All Hypercores must have a `key` property that is populated, either by waiting for
-all of them to be ready or by instantiating them with the `key` opt.
+or `json`). All Hypercores must have a `key` property that is populated, either by waiting for all of them to be ready or by instantiating them with the `key` opt.
 
 ### opts
 
