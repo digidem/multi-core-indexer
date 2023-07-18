@@ -27,6 +27,7 @@
     "tiny-typed-emitter": "^2.1.0"
   },
   "devDependencies": {
+    "@digidem/types": "^1.0.1",
     "@types/debug": "^4.1.8",
     "@types/tap": "^15.0.8",
     "brittle": "^3.3.2",
