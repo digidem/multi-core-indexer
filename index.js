@@ -18,6 +18,7 @@ const kHandleIndexing = Symbol('handleIndexing')
 /** @typedef {string | ((name: string) => import('random-access-storage'))} StorageParam */
 /** @typedef {import('./lib/types').ValueEncoding} ValueEncoding */
 /** @typedef {import('./lib/types').IndexState} IndexState */
+/** @typedef {import('./lib/types').IndexEvents} IndexEvents */
 /**
  * @template {ValueEncoding} [T='binary']
  * @typedef {import('./lib/types').Entry<T>} Entry
@@ -25,7 +26,7 @@ const kHandleIndexing = Symbol('handleIndexing')
 
 /**
  * @template {ValueEncoding} [T='binary']
- * @extends {TypedEmitter<import('./lib/types').IndexEvents>}
+ * @extends {TypedEmitter<IndexEvents>}
  */
 class MultiCoreIndexer extends TypedEmitter {
   #indexStream
