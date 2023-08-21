@@ -22,6 +22,24 @@ test('bitfield - set and get', async function (t) {
   await b.flush()
 })
 
+test('bitfield - set and get, no storage', async function (t) {
+  const b = await new Bitfield()
+
+  t.notOk(b.get(42))
+  b.set(42, true)
+  t.ok(b.get(42))
+
+  // bigger offsets
+  t.notOk(b.get(42000000))
+  b.set(42000000, true)
+  t.ok(b.get(42000000))
+
+  b.set(42000000, false)
+  t.notOk(b.get(42000000))
+
+  await b.flush()
+})
+
 test('bitfield - random set and gets', async function (t) {
   const b = await Bitfield.open(new ram())
   const set = new Set()
