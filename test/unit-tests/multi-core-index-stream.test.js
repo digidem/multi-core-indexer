@@ -75,10 +75,13 @@ test('.remaining is as expected', async (t) => {
   const ws = new Writable({
     writev: (data, cb) => {
       entries.push(...data)
+      for (const { key, index } of data) {
+        stream.setIndexed(key.toString('hex'), index)
+      }
       t.equal(
         stream.remaining,
         coreCount * blockCount - entries.length,
-        'got expected .remaining'
+        'got expected .remaining ' + (coreCount * blockCount - entries.length)
       )
       cb()
     },
@@ -188,7 +191,9 @@ test('Maintains index state', async (t) => {
     const storage = new ram()
     storages.push(storage)
     const indexStream = new CoreIndexStream(core, storage)
-    indexStream.resume()
+    indexStream.on('data', ({ index }) => {
+      indexStream.setIndexed(index)
+    })
     await throttledIdle(indexStream)
     indexStream.destroy()
   }
@@ -197,7 +202,10 @@ test('Maintains index state', async (t) => {
     (core, i) => new CoreIndexStream(core, storages[i])
   )
   const stream = new MultiCoreIndexStream(indexStreams)
-  stream.on('data', (entry) => entries.push(entry))
+  stream.on('data', (entry) => {
+    entries.push(entry)
+    stream.setIndexed(entry.key.toString('hex'), entry.index)
+  })
 
   const expectedPromise = generateFixtures(cores, 1000)
   await throttledIdle(stream)

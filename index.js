@@ -108,10 +108,13 @@ class MultiCoreIndexer extends TypedEmitter {
 
   /** @param {Entry<T>[]} entries */
   async [kHandleEntries](entries) {
-    this[kEmitState](entries.length)
+    this[kEmitState]()
     /* istanbul ignore if - not sure this is necessary, but better safe than sorry */
     if (!entries.length) return
     await this.#batch(entries)
+    for (const { key, index } of entries) {
+      this.#indexStream.setIndexed(key.toString('hex'), index)
+    }
     const batchTime = Date.now() - this.#rateMeasurementStart
     // Current rate entries per second
     const rate = entries.length / (batchTime / 1000)
@@ -129,8 +132,8 @@ class MultiCoreIndexer extends TypedEmitter {
     this[kEmitState]()
   }
 
-  [kEmitState](processing = 0) {
-    const state = this[kGetState](processing)
+  [kEmitState]() {
+    const state = this[kGetState]()
     if (state.current !== this.#prevEmittedState?.current) {
       this.emit(state.current)
     }
@@ -141,13 +144,8 @@ class MultiCoreIndexer extends TypedEmitter {
     this.#prevEmittedState = state
   }
 
-  [kGetState](processing = 0) {
-    const remaining =
-      this.#indexStream.remaining +
-      processing +
-      // @ts-ignore - entries in the read buffer have not yet been processed by the batch function
-      this.#writeStream._writableState.buffered
-    this.#lastRemaining = remaining
+  [kGetState]() {
+    const remaining = (this.#lastRemaining = this.#indexStream.remaining)
     const prevState = this.#state
     this.#state = remaining === 0 ? 'idle' : 'indexing'
     if (this.#state === 'indexing' && prevState === 'idle') {

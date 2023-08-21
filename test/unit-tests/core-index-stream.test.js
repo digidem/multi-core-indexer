@@ -41,6 +41,7 @@ test('.remaining property is accurate', async (t) => {
   t.equal(stream.remaining, totalBlocks)
   stream.on('data', (entry) => {
     entries.push(entry)
+    stream.setIndexed(entry.index)
     t.equal(stream.remaining + entries.length, totalBlocks)
   })
   await once(stream, 'idle')
@@ -152,7 +153,10 @@ test('Maintains index state', async (t) => {
   const entries = []
   const storage = new ram()
   const stream1 = new CoreIndexStream(a, storage)
-  stream1.on('data', (entry) => entries.push(entry.block))
+  stream1.on('data', (entry) => {
+    entries.push(entry.block)
+    stream1.setIndexed(entry.index)
+  })
 
   const blocks = generateFixture(0, 1000)
   await a.append(blocks.slice(0, 500))
@@ -162,7 +166,10 @@ test('Maintains index state', async (t) => {
   await once(stream1, 'close')
   await a.append(blocks.slice(500, 1000))
   const stream2 = new CoreIndexStream(a, storage)
-  stream2.on('data', (entry) => entries.push(entry.block))
+  stream2.on('data', (entry) => {
+    entries.push(entry.block)
+    stream2.setIndexed(entry.index)
+  })
   await throttledIdle(stream2)
   t.same(entries.sort(), blocks.sort())
 })
