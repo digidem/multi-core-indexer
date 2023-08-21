@@ -1,6 +1,6 @@
 // @ts-check
 const MultiCoreIndexer = require('../')
-const { test } = require('tap')
+const { test, only } = require('tap')
 const { once } = require('events')
 const ram = require('random-access-memory')
 const {
@@ -335,3 +335,29 @@ test('state getter', async (t) => {
   await indexer.close()
   t.pass('Indexer closed')
 })
+
+only(
+  'state.remaining does not update until after batch function resolves',
+  async (t) => {
+    const cores = await createMultiple(1)
+    const entries = []
+    await generateFixtures(cores, 1)
+    const indexer = new MultiCoreIndexer(cores, {
+      batch: async (data) => {
+        const state = indexer.state
+        t.same(
+          state.remaining,
+          1,
+          'remaining should not decrease until after batch() resolves'
+        )
+        entries.push(...data)
+      },
+      storage: () => new ram(),
+    })
+    await throttledIdle(indexer)
+    t.same(indexer.state.current, 'idle')
+    t.same(entries.length, 1)
+    await indexer.close()
+    t.pass('Indexer closed')
+  }
+)
