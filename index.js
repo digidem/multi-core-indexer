@@ -13,6 +13,7 @@ const DEFAULT_BATCH_SIZE = 100
 const MOVING_AVG_FACTOR = 5
 const kHandleEntries = Symbol('handleEntries')
 const kEmitState = Symbol('emitState')
+const kGetState = Symbol('getState')
 const kHandleIndexing = Symbol('handleIndexing')
 
 /** @typedef {string | ((name: string) => import('random-access-storage'))} StorageParam */
@@ -39,6 +40,8 @@ class MultiCoreIndexer extends TypedEmitter {
   #rateMeasurementStart = Date.now()
   #rate = 0
   #createStorage
+  /** @type {IndexState | undefined} */
+  #prevEmittedState
 
   /**
    *
@@ -80,11 +83,7 @@ class MultiCoreIndexer extends TypedEmitter {
    * @type {IndexState}
    */
   get state() {
-    return {
-      current: this.#state,
-      entriesPerSecond: this.#rate,
-      remaining: this.#lastRemaining,
-    }
+    return this[kGetState]()
   }
 
   /**
@@ -109,10 +108,13 @@ class MultiCoreIndexer extends TypedEmitter {
 
   /** @param {Entry<T>[]} entries */
   async [kHandleEntries](entries) {
-    this[kEmitState](entries.length)
+    this[kEmitState]()
     /* istanbul ignore if - not sure this is necessary, but better safe than sorry */
     if (!entries.length) return
     await this.#batch(entries)
+    for (const { key, index } of entries) {
+      this.#indexStream.setIndexed(key.toString('hex'), index)
+    }
     const batchTime = Date.now() - this.#rateMeasurementStart
     // Current rate entries per second
     const rate = entries.length / (batchTime / 1000)
@@ -130,28 +132,30 @@ class MultiCoreIndexer extends TypedEmitter {
     this[kEmitState]()
   }
 
-  [kEmitState](processing = 0) {
-    const remaining =
-      this.#indexStream.remaining +
-      processing +
-      // @ts-ignore - entries in the read buffer have not yet been processed by the batch function
-      this.#writeStream._writableState.buffered
-    if (remaining === this.#lastRemaining) return
-    this.#lastRemaining = remaining
+  [kEmitState]() {
+    const state = this[kGetState]()
+    if (state.current !== this.#prevEmittedState?.current) {
+      this.emit(state.current)
+    }
+    // Only emit if remaining has changed
+    if (state.remaining !== this.#prevEmittedState?.remaining) {
+      this.emit('index-state', state)
+    }
+    this.#prevEmittedState = state
+  }
+
+  [kGetState]() {
+    const remaining = (this.#lastRemaining = this.#indexStream.remaining)
     const prevState = this.#state
     this.#state = remaining === 0 ? 'idle' : 'indexing'
     if (this.#state === 'indexing' && prevState === 'idle') {
-      this.emit('indexing')
       this.#rateMeasurementStart = Date.now()
     }
-    if (this.#state === 'idle' && prevState === 'indexing') {
-      this.emit('idle')
-    }
-    this.emit('index-state', {
+    return {
       current: this.#state,
       remaining,
       entriesPerSecond: this.#rate,
-    })
+    }
   }
 
   /**

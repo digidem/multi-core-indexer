@@ -335,3 +335,77 @@ test('state getter', async (t) => {
   await indexer.close()
   t.pass('Indexer closed')
 })
+
+test('state.remaining does not update until after batch function resolves', async (t) => {
+  const cores = await createMultiple(1)
+  const entries = []
+  await generateFixtures(cores, 1)
+  const indexer = new MultiCoreIndexer(cores, {
+    batch: async (data) => {
+      const state = indexer.state
+      t.same(
+        state.remaining,
+        1,
+        'remaining should not decrease until after batch() resolves'
+      )
+      entries.push(...data)
+    },
+    storage: () => new ram(),
+  })
+  await throttledIdle(indexer)
+  t.same(indexer.state.current, 'idle')
+  t.same(entries.length, 1)
+  await indexer.close()
+  t.pass('Indexer closed')
+})
+
+test('Closing before batch complete should resume on next start', async (t) => {
+  const cores = await createMultiple(5)
+  const expected = await generateFixtures(cores, 1000)
+  const storages = new Map()
+
+  /** @param {string} key */
+  function createStorage(key) {
+    const storage = storages.get(key) || new ram()
+    storages.set(key, storage)
+    return storage
+  }
+
+  /** @type {Entry[]} */
+  const entries = []
+  const indexer1 = new MultiCoreIndexer(cores, {
+    batch: async (data) => {
+      entries.push(...data)
+    },
+    storage: createStorage,
+  })
+  // Wait until indexing is half-done, then close the indexer.
+  await /** @type {Promise<void>} */ (
+    new Promise((res) => {
+      indexer1.on('index-state', onIndexState)
+      function onIndexState(state) {
+        if (state.remaining > 2500) return
+        indexer1.off('index-state', onIndexState)
+        res()
+      }
+    })
+  )
+  await indexer1.close()
+  t.ok(
+    indexer1.state.remaining <= 2500,
+    'Stopped with half of the entries indexed'
+  )
+  t.pass('Indexer closed')
+
+  const indexer2 = new MultiCoreIndexer(cores, {
+    batch: async (data) => {
+      entries.push(...data)
+    },
+    storage: createStorage,
+  })
+  await once(indexer2, 'idle')
+  t.equal(entries.length, expected.length)
+  // t.same(sortEntries(entries), sortEntries(expected))
+  await indexer2.close()
+  t.pass('Indexer closed')
+})
