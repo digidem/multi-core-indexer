@@ -55,7 +55,7 @@ class MultiCoreIndexer extends TypedEmitter {
     super()
     this.#createStorage = MultiCoreIndexer.defaultStorage(storage)
     const coreIndexStreams = cores.map((core) => {
-      const storage = this.#createStorage(core.key.toString('hex'))
+      const storage = this.#createStorage(getStorageName(core))
       return new CoreIndexStream(core, storage)
     })
     this.#indexStream = new MultiCoreIndexStream(coreIndexStreams, {
@@ -91,7 +91,7 @@ class MultiCoreIndexer extends TypedEmitter {
    * @param {import('hypercore')<T, Buffer | string>} core
    */
   addCore(core) {
-    const storage = this.#createStorage(core.key.toString('hex'))
+    const storage = this.#createStorage(getStorageName(core))
     const coreIndexStream = new CoreIndexStream(core, storage)
     this.#indexStream.addStream(coreIndexStream)
   }
@@ -173,3 +173,10 @@ class MultiCoreIndexer extends TypedEmitter {
 }
 
 module.exports = MultiCoreIndexer
+
+/** @param {{ discoveryKey: null | Buffer }} core */
+function getStorageName(core) {
+  // @ts-expect-error - we want this to throw if core.discoveryKey is nullish
+  const id = core.discoveryKey.toString('hex')
+  return [id.slice(0, 2), id.slice(2, 4), id].join('/')
+}
