@@ -2,6 +2,16 @@
 
 All notable changes to this project will be documented in this file. See [standard-version](https://github.com/conventional-changelog/standard-version) for commit guidelines.
 
+## [1.0.0-alpha.6](https://github.com/digidem/multi-core-indexer/compare/v1.0.0-alpha.5...v1.0.0-alpha.6) (2023-08-30)
+
+### ⚠ BREAKING CHANGES
+
+- put storage in sub-folders (#17)
+
+### Bug Fixes
+
+- put storage in sub-folders ([#17](https://github.com/digidem/multi-core-indexer/issues/17)) ([3c13591](https://github.com/digidem/multi-core-indexer/commit/3c1359105a4fe2f87c9e9f4732e6ea51fa464c10)), closes [#16](https://github.com/digidem/multi-core-indexer/issues/16)
+
 ## [1.0.0-alpha.5](https://github.com/digidem/multi-core-indexer/compare/v1.0.0-alpha.4...v1.0.0-alpha.5) (2023-08-23)
 
 ### Bug Fixes
