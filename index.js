@@ -3,6 +3,7 @@ const { Writable } = require('streamx')
 const { TypedEmitter } = require('tiny-typed-emitter')
 const { once } = require('events')
 const raf = require('random-access-file')
+const { discoveryKey } = require('hypercore-crypto')
 // const log = require('debug')('multi-core-indexer')
 const { CoreIndexStream } = require('./lib/core-index-stream')
 const { MultiCoreIndexStream } = require('./lib/multi-core-index-stream')
@@ -174,9 +175,8 @@ class MultiCoreIndexer extends TypedEmitter {
 
 module.exports = MultiCoreIndexer
 
-/** @param {{ discoveryKey: null | Buffer }} core */
+/** @param {{ key: Buffer }} core */
 function getStorageName(core) {
-  // @ts-expect-error - we want this to throw if core.discoveryKey is nullish
-  const id = core.discoveryKey.toString('hex')
+  const id = discoveryKey(core.key).toString('hex')
   return [id.slice(0, 2), id.slice(2, 4), id].join('/')
 }
