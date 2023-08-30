@@ -2,6 +2,12 @@
 
 All notable changes to this project will be documented in this file. See [standard-version](https://github.com/conventional-changelog/standard-version) for commit guidelines.
 
+## [1.0.0-alpha.7](https://github.com/digidem/multi-core-indexer/compare/v1.0.0-alpha.6...v1.0.0-alpha.7) (2023-08-30)
+
+### Bug Fixes
+
+- get discovery key from core.key ([25865bf](https://github.com/digidem/multi-core-indexer/commit/25865bffecc21083660471cdc74c409c7333fccd))
+
 ## [1.0.0-alpha.6](https://github.com/digidem/multi-core-indexer/compare/v1.0.0-alpha.5...v1.0.0-alpha.6) (2023-08-30)
 
 ### ⚠ BREAKING CHANGES
