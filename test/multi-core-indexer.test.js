@@ -11,6 +11,7 @@ const {
   throttledIdle,
   sortEntries,
 } = require('./helpers')
+const { testKeypairs, expectedStorageNames } = require('./fixtures.js')
 
 /** @typedef {import('../lib/types').Entry<'binary'>} Entry */
 
@@ -408,4 +409,25 @@ test('Closing before batch complete should resume on next start', async (t) => {
   // t.same(sortEntries(entries), sortEntries(expected))
   await indexer2.close()
   t.pass('Indexer closed')
+})
+
+// This checks that storage names do not change between versions, which would be a breaking change
+test('Consistent storage folders', async (t) => {
+  const storageNames = []
+  const cores = []
+  for (const keyPair of testKeypairs.slice(0, 5)) {
+    cores.push(await create({ keyPair }))
+  }
+  function createStorage(name) {
+    storageNames.push(name)
+    return new ram()
+  }
+  const indexer = new MultiCoreIndexer(cores, {
+    batch: async () => {},
+    storage: createStorage,
+  })
+  for (const keyPair of testKeypairs.slice(5)) {
+    indexer.addCore(await create({ keyPair }))
+  }
+  t.same(storageNames.sort(), expectedStorageNames)
 })
