@@ -115,6 +115,7 @@ class MultiCoreIndexer extends TypedEmitter {
       const promisifiedClose = promisify(storage.close.bind(storage))
       storageClosePromises.push(promisifiedClose())
     }
+    this.#storages.clear()
     await Promise.all(storageClosePromises)
   }
 
