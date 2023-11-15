@@ -1,6 +1,6 @@
 // @ts-check
 const MultiCoreIndexer = require('../')
-const { test, only } = require('tap')
+const { test } = require('tap')
 const { once } = require('events')
 const ram = require('random-access-memory')
 const {
@@ -15,7 +15,7 @@ const { testKeypairs, expectedStorageNames } = require('./fixtures.js')
 
 /** @typedef {import('../lib/types').Entry<'binary'>} Entry */
 
-only('Indexes all items already in a core', async (t) => {
+test('Indexes all items already in a core', async (t) => {
   const cores = await createMultiple(5)
   const expected = await generateFixtures(cores, 100)
   /** @type {Entry[]} */
