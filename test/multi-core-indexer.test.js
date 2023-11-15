@@ -1,6 +1,6 @@
 // @ts-check
 const MultiCoreIndexer = require('../')
-const { test } = require('tap')
+const { test, only } = require('tap')
 const { once } = require('events')
 const ram = require('random-access-memory')
 const {
@@ -15,22 +15,32 @@ const { testKeypairs, expectedStorageNames } = require('./fixtures.js')
 
 /** @typedef {import('../lib/types').Entry<'binary'>} Entry */
 
-test('Indexes all items already in a core', async (t) => {
+only('Indexes all items already in a core', async (t) => {
   const cores = await createMultiple(5)
   const expected = await generateFixtures(cores, 100)
   /** @type {Entry[]} */
   const entries = []
+  /** @type {ram[]} */
+  const storages = []
+  function createStorage() {
+    const storage = new ram()
+    storages.push(storage)
+    return storage
+  }
   const indexer = new MultiCoreIndexer(cores, {
     batch: async (data) => {
       entries.push(...data)
     },
     maxBatch: 50,
-    storage: () => new ram(),
+    storage: createStorage,
   })
   await throttledIdle(indexer)
   t.same(sortEntries(entries), sortEntries(expected))
   await indexer.close()
-  t.pass('Indexer closed')
+  t.ok(
+    storages.every((storage) => storage.closed),
+    'all storages are closed'
+  )
 })
 
 test('Indexes items appended after initial index', async (t) => {
@@ -154,14 +164,7 @@ test('Appends from a replicated core are indexed', async (t) => {
 test('Maintains index state (memory storage)', async (t) => {
   const cores = await createMultiple(5)
   const expected1 = await generateFixtures(cores, 1000)
-  const storages = new Map()
-
-  /** @param {string} key */
-  function createStorage(key) {
-    const storage = storages.get(key) || new ram()
-    storages.set(key, storage)
-    return storage
-  }
+  const createRAM = ram.reusable()
 
   /** @type {Entry[]} */
   const entries1 = []
@@ -169,7 +172,7 @@ test('Maintains index state (memory storage)', async (t) => {
     batch: async (data) => {
       entries1.push(...data)
     },
-    storage: createStorage,
+    storage: createRAM,
   })
   await once(indexer1, 'idle')
   t.same(sortEntries(entries1), sortEntries(expected1))
@@ -183,7 +186,7 @@ test('Maintains index state (memory storage)', async (t) => {
     batch: async (data) => {
       entries2.push(...data)
     },
-    storage: createStorage,
+    storage: createRAM,
   })
   await once(indexer2, 'idle')
   t.same(sortEntries(entries2), sortEntries(expected2))
@@ -363,14 +366,7 @@ test('state.remaining does not update until after batch function resolves', asyn
 test('Closing before batch complete should resume on next start', async (t) => {
   const cores = await createMultiple(5)
   const expected = await generateFixtures(cores, 1000)
-  const storages = new Map()
-
-  /** @param {string} key */
-  function createStorage(key) {
-    const storage = storages.get(key) || new ram()
-    storages.set(key, storage)
-    return storage
-  }
+  const createRAM = ram.reusable()
 
   /** @type {Entry[]} */
   const entries = []
@@ -378,7 +374,7 @@ test('Closing before batch complete should resume on next start', async (t) => {
     batch: async (data) => {
       entries.push(...data)
     },
-    storage: createStorage,
+    storage: createRAM,
   })
   // Wait until indexing is half-done, then close the indexer.
   await /** @type {Promise<void>} */ (
@@ -402,7 +398,7 @@ test('Closing before batch complete should resume on next start', async (t) => {
     batch: async (data) => {
       entries.push(...data)
     },
-    storage: createStorage,
+    storage: createRAM,
   })
   await once(indexer2, 'idle')
   t.equal(entries.length, expected.length)
