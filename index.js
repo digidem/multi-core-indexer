@@ -7,6 +7,7 @@ const { discoveryKey } = require('hypercore-crypto')
 // const log = require('debug')('multi-core-indexer')
 const { CoreIndexStream } = require('./lib/core-index-stream')
 const { MultiCoreIndexStream } = require('./lib/multi-core-index-stream')
+const { promisify } = require('util')
 
 const DEFAULT_BATCH_SIZE = 100
 // The indexing rate (in entries per second) is calculated as an exponential
@@ -43,6 +44,8 @@ class MultiCoreIndexer extends TypedEmitter {
   #createStorage
   /** @type {IndexState | undefined} */
   #prevEmittedState
+  /** @type {Set<import('random-access-storage')>} */
+  #storages = new Set()
 
   /**
    *
@@ -57,6 +60,7 @@ class MultiCoreIndexer extends TypedEmitter {
     this.#createStorage = MultiCoreIndexer.defaultStorage(storage)
     const coreIndexStreams = cores.map((core) => {
       const storage = this.#createStorage(getStorageName(core))
+      this.#storages.add(storage)
       return new CoreIndexStream(core, storage)
     })
     this.#indexStream = new MultiCoreIndexStream(coreIndexStreams, {
@@ -93,6 +97,7 @@ class MultiCoreIndexer extends TypedEmitter {
    */
   addCore(core) {
     const storage = this.#createStorage(getStorageName(core))
+    this.#storages.add(storage)
     const coreIndexStream = new CoreIndexStream(core, storage)
     this.#indexStream.addStream(coreIndexStream)
   }
@@ -101,10 +106,17 @@ class MultiCoreIndexer extends TypedEmitter {
     this.#indexStream.off('indexing', this.#handleIndexingBound)
     this.#writeStream.destroy()
     this.#indexStream.destroy()
-    return Promise.all([
+    await Promise.all([
       once(this.#indexStream, 'close'),
       once(this.#writeStream, 'close'),
     ])
+    const storageClosePromises = []
+    for (const storage of this.#storages) {
+      const promisifiedClose = promisify(storage.close.bind(storage))
+      storageClosePromises.push(promisifiedClose())
+    }
+    this.#storages.clear()
+    await Promise.all(storageClosePromises)
   }
 
   /** @param {Entry<T>[]} entries */
