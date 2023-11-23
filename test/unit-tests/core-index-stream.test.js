@@ -7,7 +7,7 @@ const {
   create,
   replicate,
   generateFixture,
-  throttledIdle,
+  throttledDrain: throttledIdle,
 } = require('../helpers')
 
 test('hypercore key', async (t) => {
@@ -25,8 +25,17 @@ test('Indexes all items already in a core', async (t) => {
   const entries = []
   const stream = new CoreIndexStream(a, new ram())
   stream.on('data', (entry) => entries.push(entry))
-  await once(stream, 'idle')
+  await once(stream, 'drained')
   t.same(entries, expected)
+})
+
+test("Empty core emits 'drained' event", async (t) => {
+  const a = await create()
+  const stream = new CoreIndexStream(a, new ram())
+  stream.resume()
+  stream.on('indexing', t.fail)
+  await once(stream, 'drained')
+  t.pass('Stream drained')
 })
 
 test('.remaining property is accurate', async (t) => {
@@ -44,7 +53,7 @@ test('.remaining property is accurate', async (t) => {
     stream.setIndexed(entry.index)
     t.equal(stream.remaining + entries.length, totalBlocks)
   })
-  await once(stream, 'idle')
+  await once(stream, 'drained')
   t.equal(stream.remaining, 0)
   t.same(entries, expected)
 })
@@ -56,11 +65,11 @@ test('Indexes items appended after initial index', async (t) => {
   const entries = []
   const stream = new CoreIndexStream(a, new ram())
   stream.on('data', (entry) => entries.push(entry))
-  await once(stream, 'idle')
+  await once(stream, 'drained')
   t.same(entries, [], 'no entries before append')
   const expected = blocksToExpected(blocks, a.key)
   await a.append(blocks)
-  await once(stream, 'idle')
+  await once(stream, 'drained')
   t.same(entries, expected)
 })
 
@@ -91,7 +100,7 @@ test('Readable stream from sparse hypercore', async (t) => {
   )
 })
 
-test("'indexing' and 'idle' events are paired", async (t) => {
+test("'indexing' and 'drained' events are paired", async (t) => {
   const a = await create()
   const blocks = generateFixture(0, 100)
   await a.append(blocks)
@@ -106,7 +115,7 @@ test("'indexing' and 'idle' events are paired", async (t) => {
     t.equal(indexingEvents, idleEvents)
     indexingEvents++
   })
-  stream.on('idle', () => {
+  stream.on('drained', () => {
     idleEvents++
     t.equal(indexingEvents, idleEvents)
   })

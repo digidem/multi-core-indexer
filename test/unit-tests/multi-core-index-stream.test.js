@@ -9,7 +9,7 @@ const {
   replicate,
   createMultiple,
   generateFixtures,
-  throttledIdle,
+  throttledDrain,
   sortEntries,
 } = require('../helpers')
 
@@ -26,7 +26,7 @@ test('Indexes all items already in a core', async (t) => {
     },
   })
   stream.pipe(ws)
-  await throttledIdle(stream)
+  await throttledDrain(stream)
   t.same(sortEntries(entries), sortEntries(expected))
   t.not(entries.length, 0, 'has entries')
   stream.destroy()
@@ -53,7 +53,7 @@ test('Adding index streams after initialization', async (t) => {
     },
   })
   stream.pipe(ws)
-  await throttledIdle(stream)
+  await throttledDrain(stream)
   t.same(sortEntries(entries), sortEntries(expected))
   t.not(entries.length, 0, 'has entries')
   stream.destroy()
@@ -87,7 +87,7 @@ test('.remaining is as expected', async (t) => {
     },
   })
   stream.pipe(ws)
-  await throttledIdle(stream)
+  await throttledDrain(stream)
   t.same(sortEntries(entries), sortEntries(expected))
   t.not(entries.length, 0, 'has entries')
   stream.destroy()
@@ -104,10 +104,10 @@ test('Indexes items appended after initial index', async (t) => {
   const entries = []
   const stream = new MultiCoreIndexStream(indexStreams, { highWaterMark: 10 })
   stream.on('data', (entry) => entries.push(entry))
-  await throttledIdle(stream)
+  await throttledDrain(stream)
   t.same(entries, [], 'no entries before append')
   const expected = await generateFixtures(cores, 100)
-  await throttledIdle(stream)
+  await throttledDrain(stream)
   t.same(sortEntries(entries), sortEntries(expected))
   stream.destroy()
   await once(stream, 'close')
@@ -137,12 +137,12 @@ test('index sparse hypercores', async (t) => {
   const entries = []
   const stream = new MultiCoreIndexStream(indexStreams, { highWaterMark: 10 })
   stream.on('data', (entry) => entries.push(entry))
-  await throttledIdle(stream)
+  await throttledDrain(stream)
 
   t.same(sortEntries(entries), sortEntries(expected))
 
   await Promise.all([
-    throttledIdle(stream),
+    throttledDrain(stream),
     ...remoteCores.map((core) =>
       core.download({ start: 50, end: 60 }).downloaded()
     ),
@@ -168,7 +168,7 @@ test('Appends from a replicated core are indexed', async (t) => {
   const entries = []
   const stream = new MultiCoreIndexStream(indexStreams, { highWaterMark: 10 })
   stream.on('data', (entry) => entries.push(entry))
-  await throttledIdle(stream)
+  await throttledDrain(stream)
 
   t.same(sortEntries(entries), sortEntries(expected1))
 
@@ -176,7 +176,7 @@ test('Appends from a replicated core are indexed', async (t) => {
   for (const remote of remoteCores.values()) {
     remote.download({ start: 0, end: remote.length })
   }
-  await throttledIdle(stream)
+  await throttledDrain(stream)
 
   t.same(sortEntries(entries), sortEntries([...expected1, ...expected2]))
 })
@@ -194,7 +194,7 @@ test('Maintains index state', async (t) => {
     indexStream.on('data', ({ index }) => {
       indexStream.setIndexed(index)
     })
-    await throttledIdle(indexStream)
+    await throttledDrain(indexStream)
     indexStream.destroy()
   }
 
@@ -208,7 +208,7 @@ test('Maintains index state', async (t) => {
   })
 
   const expectedPromise = generateFixtures(cores, 1000)
-  await throttledIdle(stream)
+  await throttledDrain(stream)
   const expected = await expectedPromise
   t.same(sortEntries(entries), sortEntries(expected))
 })

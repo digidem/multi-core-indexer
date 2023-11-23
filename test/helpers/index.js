@@ -13,7 +13,7 @@ module.exports = {
   generateFixture,
   generateFixtures,
   createMultiple,
-  throttledIdle,
+  throttledDrain,
   sortEntries,
   logEntries,
   blocksToExpected,
@@ -84,32 +84,27 @@ async function generateFixtures(cores, count) {
 }
 
 /**
- * The index stream can become momentarily idle between reads and
- * appends/downloads of new data. This throttle idle will resolve only when the
- * stream has remained idle for > 200ms
+ * The index stream can become momentarily drained between reads and
+ * appends/downloads of new data. This throttle drained will resolve only when
+ * the stream has remained drained for > 10ms
  * @param {import('events').EventEmitter} emitter
  * @returns {Promise<void>}
  */
-async function throttledIdle(emitter) {
+async function throttledDrain(emitter) {
   return new Promise((resolve) => {
     /** @type {ReturnType<setTimeout>} */
     let timeoutId
 
-    /* @ts-ignore: we're using this helper with both MultiCoreIndexer and an indexer stream. checking that the state property exists is sufficient. */
-    if (emitter.state && emitter.state.current === 'idle') {
-      onIdle()
-    }
-
-    function onIdle() {
+    function onDrained() {
       clearTimeout(timeoutId)
       timeoutId = setTimeout(() => {
-        emitter.off('idle', onIdle)
+        emitter.off('drained', onDrained)
         emitter.off('indexing', onIndexing)
         resolve()
       }, 10)
     }
 
-    emitter.on('idle', onIdle)
+    emitter.on('drained', onDrained)
     emitter.on('indexing', onIndexing)
     function onIndexing() {
       clearTimeout(timeoutId)

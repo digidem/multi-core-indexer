@@ -8,6 +8,7 @@ const { discoveryKey } = require('hypercore-crypto')
 const { CoreIndexStream } = require('./lib/core-index-stream')
 const { MultiCoreIndexStream } = require('./lib/multi-core-index-stream')
 const { promisify } = require('util')
+const { pDefer } = require('./lib/utils.js')
 
 const DEFAULT_BATCH_SIZE = 100
 // The indexing rate (in entries per second) is calculated as an exponential
@@ -16,7 +17,6 @@ const MOVING_AVG_FACTOR = 5
 const kHandleEntries = Symbol('handleEntries')
 const kEmitState = Symbol('emitState')
 const kGetState = Symbol('getState')
-const kHandleIndexing = Symbol('handleIndexing')
 
 /** @typedef {string | ((name: string) => import('random-access-storage'))} StorageParam */
 /** @typedef {import('./lib/types').ValueEncoding} ValueEncoding */
@@ -35,9 +35,8 @@ class MultiCoreIndexer extends TypedEmitter {
   #indexStream
   #writeStream
   #batch
-  #handleIndexingBound = this[kHandleIndexing].bind(this)
   /** @type {import('./lib/types').IndexStateCurrent} */
-  #state = 'idle'
+  #state = 'indexing'
   #lastRemaining = -1
   #rateMeasurementStart = Date.now()
   #rate = 0
@@ -46,6 +45,9 @@ class MultiCoreIndexer extends TypedEmitter {
   #prevEmittedState
   /** @type {Set<import('random-access-storage')>} */
   #storages = new Set()
+  #emitStateBound
+  /** @type {import('./lib/utils.js').DeferredPromise | undefined} */
+  #pendingIdle
 
   /**
    *
@@ -78,10 +80,14 @@ class MultiCoreIndexer extends TypedEmitter {
       })
     )
     this.#indexStream.pipe(this.#writeStream)
+    this.#emitStateBound = this[kEmitState].bind(this)
     // This is needed because the source streams can start indexing before this
     // stream starts reading data. This ensures that the indexing state is
     // emitted when the source cores first append / download data
-    this.#indexStream.on('indexing', this.#handleIndexingBound)
+    this.#indexStream.on('indexing', this.#emitStateBound)
+    // This is needed for source streams that start empty, so that we know that
+    // the initial state of indexing has changed to idle
+    this.#indexStream.on('drained', this.#emitStateBound)
   }
 
   /**
@@ -102,8 +108,19 @@ class MultiCoreIndexer extends TypedEmitter {
     this.#indexStream.addStream(coreIndexStream)
   }
 
+  /**
+   * Resolves when indexing state is 'idle'
+   */
+  async idle() {
+    if (!this.#pendingIdle) {
+      this.#pendingIdle = pDefer()
+    }
+    return this.#pendingIdle.promise
+  }
+
   async close() {
-    this.#indexStream.off('indexing', this.#handleIndexingBound)
+    this.#indexStream.off('indexing', this.#emitStateBound)
+    this.#indexStream.off('drained', this.#emitStateBound)
     this.#writeStream.destroy()
     this.#indexStream.destroy()
     await Promise.all([
@@ -140,17 +157,12 @@ class MultiCoreIndexer extends TypedEmitter {
     this[kEmitState]()
   }
 
-  [kHandleIndexing]() {
-    if (this.#state === 'indexing') return
-    this[kEmitState]()
-  }
-
   [kEmitState]() {
     const state = this[kGetState]()
     if (state.current !== this.#prevEmittedState?.current) {
       this.emit(state.current)
     }
-    // Only emit if remaining has changed
+    // Only emit if remaining has changed (which infers that state.current has changed)
     if (state.remaining !== this.#prevEmittedState?.remaining) {
       this.emit('index-state', state)
     }
@@ -158,9 +170,13 @@ class MultiCoreIndexer extends TypedEmitter {
   }
 
   [kGetState]() {
-    const remaining = (this.#lastRemaining = this.#indexStream.remaining)
+    const remaining = this.#indexStream.remaining
     const prevState = this.#state
     this.#state = remaining === 0 ? 'idle' : 'indexing'
+    if (this.#state === 'idle' && this.#pendingIdle) {
+      this.#pendingIdle.resolve()
+      this.#pendingIdle = undefined
+    }
     if (this.#state === 'indexing' && prevState === 'idle') {
       this.#rateMeasurementStart = Date.now()
     }
