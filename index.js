@@ -112,6 +112,7 @@ class MultiCoreIndexer extends TypedEmitter {
    * Resolves when indexing state is 'idle'
    */
   async idle() {
+    if (this[kGetState]().current === 'idle') return
     if (!this.#pendingIdle) {
       this.#pendingIdle = pDefer()
     }

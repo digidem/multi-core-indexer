@@ -111,6 +111,24 @@ test('No cores, starts idle, indexing after core added', async (t) => {
   t.pass('Indexer closed')
 })
 
+test('Calling idle() when already idle still resolves', async (t) => {
+  const cores = await createMultiple(5)
+  const expected = await generateFixtures(cores, 10)
+  /** @type {Entry[]} */
+  const entries = []
+  const indexer = new MultiCoreIndexer(cores, {
+    batch: async (data) => {
+      entries.push(...data)
+    },
+    storage: () => new ram(),
+  })
+  await indexer.idle()
+  t.same(sortEntries(entries), sortEntries(expected))
+  await indexer.idle()
+  t.same(sortEntries(entries), sortEntries(expected))
+  await indexer.close()
+  t.pass('indexer closed')
+})
 test('Indexes cores added with addCore method', async (t) => {
   const cores = await createMultiple(5)
   /** @type {Entry[]} */
