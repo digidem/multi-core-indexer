@@ -94,6 +94,23 @@ test('Indexes items appended after initial index', async (t) => {
   t.pass('Indexer closed')
 })
 
+test('No cores, starts idle, indexing after core added', async (t) => {
+  const indexer = new MultiCoreIndexer([], {
+    batch: async () => {},
+    storage: () => new ram(),
+  })
+  t.equal(indexer.state.current, 'idle', 'starts in idle state')
+  await indexer.idle()
+  t.pass('indexer.idle() still resolves')
+  const core = await create()
+  indexer.addCore(core)
+  t.equal(indexer.state.current, 'indexing', 'indexing after core added')
+  await indexer.idle()
+  t.pass('indexer.idle() still resolves')
+  await indexer.close()
+  t.pass('Indexer closed')
+})
+
 test('Indexes cores added with addCore method', async (t) => {
   const cores = await createMultiple(5)
   /** @type {Entry[]} */
