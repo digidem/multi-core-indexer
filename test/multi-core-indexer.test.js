@@ -228,6 +228,37 @@ test('Maintains index state (file storage)', async (t) => {
   })
 })
 
+test('Entries are re-indexed if index storage reset', async (t) => {
+  const cores = await createMultiple(5)
+  const expected = await generateFixtures(cores, 1000)
+
+  /** @type {Entry[]} */
+  const entries1 = []
+  const indexer1 = new MultiCoreIndexer(cores, {
+    batch: async (data) => {
+      entries1.push(...data)
+    },
+    storage: () => new ram(),
+  })
+  await indexer1.idle()
+  t.same(sortEntries(entries1), sortEntries(expected))
+  await indexer1.close()
+  t.pass('Indexer closed')
+
+  /** @type {Entry[]} */
+  const entries2 = []
+  const indexer2 = new MultiCoreIndexer(cores, {
+    batch: async (data) => {
+      entries2.push(...data)
+    },
+    storage: () => new ram(),
+  })
+  await indexer2.idle()
+  t.same(sortEntries(entries2), sortEntries(expected))
+  await indexer2.close()
+  t.pass('Indexer closed')
+})
+
 test('Entries are batched to batchMax when indexing is slower than Hypercore reads', async (t) => {
   const cores = await createMultiple(5)
   await generateFixtures(cores, 500)
