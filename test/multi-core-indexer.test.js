@@ -328,13 +328,28 @@ test('state getter', async (t) => {
     },
     storage: () => new ram(),
   })
-  t.same(indexer.state.current, 'idle')
+  t.same(indexer.state.current, 'indexing')
   await indexer.idle()
   await generateFixtures(cores, 100)
   t.same(indexer.state.current, 'indexing')
   await indexer.idle()
   t.same(indexer.state.current, 'idle')
   t.same(entries.length, 200)
+  await indexer.close()
+  t.pass('Indexer closed')
+})
+
+test('empty cores, no indexing event before idle', async (t) => {
+  const cores = await createMultiple(2)
+  const indexer = new MultiCoreIndexer(cores, {
+    batch: async () => {},
+    storage: () => new ram(),
+  })
+  indexer.on('index-state', (state) => {
+    if (state.current === 'indexing')
+      t.fail('should not emit indexing state for empty cores')
+  })
+  t.same(indexer.state.current, 'indexing')
   await indexer.close()
   t.pass('Indexer closed')
 })

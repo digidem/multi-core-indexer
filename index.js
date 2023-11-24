@@ -171,8 +171,9 @@ class MultiCoreIndexer extends TypedEmitter {
 
   [kGetState]() {
     const remaining = this.#indexStream.remaining
+    const drained = this.#indexStream.drained
     const prevState = this.#state
-    this.#state = remaining === 0 ? 'idle' : 'indexing'
+    this.#state = remaining === 0 && drained ? 'idle' : 'indexing'
     if (this.#state === 'idle' && this.#pendingIdle) {
       this.#pendingIdle.resolve()
       this.#pendingIdle = undefined
