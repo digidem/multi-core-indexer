@@ -42,6 +42,23 @@ test('Indexes all items already in a core', async (t) => {
   )
 })
 
+test('Multiple .idle() awaits', async (t) => {
+  const cores = await createMultiple(5)
+  const expected = await generateFixtures(cores, 100)
+  /** @type {Entry[]} */
+  const entries = []
+  const indexer = new MultiCoreIndexer(cores, {
+    batch: async (data) => {
+      entries.push(...data)
+    },
+    maxBatch: 50,
+    storage: () => new ram(),
+  })
+  await Promise.all([indexer.idle(), indexer.idle(), indexer.idle()])
+  t.same(sortEntries(entries), sortEntries(expected))
+  await indexer.close()
+})
+
 test('Indexes items appended after initial index', async (t) => {
   const cores = await createMultiple(5)
   /** @type {Entry[]} */
