@@ -10,6 +10,7 @@ const {
   sortEntries,
 } = require('./helpers')
 const { testKeypairs, expectedStorageNames } = require('./fixtures.js')
+const Hypercore = require('hypercore')
 
 /** @typedef {import('../lib/types').Entry<'binary'>} Entry */
 
@@ -539,5 +540,50 @@ test('Consistent storage folders', async (t) => {
   for (const keyPair of testKeypairs.slice(5)) {
     indexer.addCore(await create({ keyPair }))
   }
+  await indexer.idle()
   t.same(storageNames.sort(), expectedStorageNames)
+})
+
+test('Works with non-ready cores', async (t) => {
+  /** @type {Hypercore[]} */
+  const cores = []
+  for (let i = 0; i < 5; i++) {
+    cores.push(new Hypercore(() => new ram()))
+  }
+  const indexer = new MultiCoreIndexer(cores, {
+    batch: async () => {},
+    storage: () => new ram(),
+  })
+  t.equal(indexer.state.current, 'indexing')
+  await indexer.idle()
+  t.pass('indexer.idle() resolves')
+  await indexer.close()
+})
+
+test('Indexes all items already in a core - cores not ready', async (t) => {
+  /** @type {Hypercore[]} */
+  const cores = []
+  /** @type {Array<ReturnType<(typeof ram)['reusable']>>} */
+  const storages = []
+  for (let i = 0; i < 5; i++) {
+    const storage = ram.reusable()
+    storages.push(storage)
+    cores.push(new Hypercore(storage))
+  }
+  const expected = await generateFixtures(cores, 100)
+  await Promise.all(cores.map((core) => core.close()))
+  for (let i = 0; i < 5; i++) {
+    cores[i] = new Hypercore(storages[i])
+  }
+  /** @type {Entry[]} */
+  const entries = []
+  const indexer = new MultiCoreIndexer(cores, {
+    batch: async (data) => {
+      entries.push(...data)
+    },
+    storage: () => new ram(),
+  })
+  await indexer.idle()
+  t.same(sortEntries(entries), sortEntries(expected))
+  await indexer.close()
 })
