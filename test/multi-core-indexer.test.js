@@ -346,9 +346,9 @@ test('empty cores, no indexing event before idle', async (t) => {
     storage: () => new ram(),
   })
   indexer.on('index-state', (state) => {
-    if (state.current === 'indexing')
-      t.fail('should not emit indexing state for empty cores')
+    if (state.current === 'indexing') t.fail()
   })
+  indexer.on('indexing', t.fail)
   t.same(indexer.state.current, 'indexing')
   await indexer.close()
   t.pass('Indexer closed')
