@@ -1,7 +1,6 @@
 // @ts-check
 const MultiCoreIndexer = require('../')
 const { test } = require('tap')
-const { once } = require('events')
 const ram = require('random-access-memory')
 const {
   create,
@@ -190,7 +189,7 @@ test('Maintains index state (memory storage)', async (t) => {
     },
     storage: createRAM,
   })
-  await once(indexer1, 'idle')
+  await indexer1.idle()
   t.same(sortEntries(entries1), sortEntries(expected1))
   await indexer1.close()
   t.pass('Indexer closed')
@@ -204,7 +203,7 @@ test('Maintains index state (memory storage)', async (t) => {
     },
     storage: createRAM,
   })
-  await once(indexer2, 'idle')
+  await indexer2.idle()
   t.same(sortEntries(entries2), sortEntries(expected2))
   await indexer2.close()
   t.pass('Indexer closed')
@@ -224,7 +223,7 @@ test('Maintains index state (file storage)', async (t) => {
       },
       storage: dir,
     })
-    await once(indexer1, 'idle')
+    await indexer1.idle()
     t.same(sortEntries(entries1), sortEntries(expected1))
     await indexer1.close()
     t.pass('Indexer closed')
@@ -238,7 +237,7 @@ test('Maintains index state (file storage)', async (t) => {
       },
       storage: dir,
     })
-    await once(indexer2, 'idle')
+    await indexer2.idle()
     t.same(sortEntries(entries2), sortEntries(expected2))
     await indexer2.close()
     t.pass('Indexer closed')
@@ -462,7 +461,7 @@ test('Closing before batch complete should resume on next start', async (t) => {
     },
     storage: createRAM,
   })
-  await once(indexer2, 'idle')
+  await indexer2.idle()
   t.equal(entries.length, expected.length)
   // t.same(sortEntries(entries), sortEntries(expected))
   await indexer2.close()
