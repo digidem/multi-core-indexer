@@ -3,11 +3,10 @@ const { Writable } = require('streamx')
 const { TypedEmitter } = require('tiny-typed-emitter')
 const { once } = require('events')
 const raf = require('random-access-file')
-const { discoveryKey } = require('hypercore-crypto')
 // const log = require('debug')('multi-core-indexer')
 const { CoreIndexStream } = require('./lib/core-index-stream')
 const { MultiCoreIndexStream } = require('./lib/multi-core-index-stream')
-const { promisify } = require('util')
+const { pDefer } = require('./lib/utils.js')
 
 const DEFAULT_BATCH_SIZE = 100
 // The indexing rate (in entries per second) is calculated as an exponential
@@ -16,7 +15,6 @@ const MOVING_AVG_FACTOR = 5
 const kHandleEntries = Symbol('handleEntries')
 const kEmitState = Symbol('emitState')
 const kGetState = Symbol('getState')
-const kHandleIndexing = Symbol('handleIndexing')
 
 /** @typedef {string | ((name: string) => import('random-access-storage'))} StorageParam */
 /** @typedef {import('./lib/types').ValueEncoding} ValueEncoding */
@@ -35,21 +33,21 @@ class MultiCoreIndexer extends TypedEmitter {
   #indexStream
   #writeStream
   #batch
-  #handleIndexingBound = this[kHandleIndexing].bind(this)
   /** @type {import('./lib/types').IndexStateCurrent} */
-  #state = 'idle'
+  #state = 'indexing'
   #lastRemaining = -1
   #rateMeasurementStart = Date.now()
   #rate = 0
   #createStorage
   /** @type {IndexState | undefined} */
   #prevEmittedState
-  /** @type {Set<import('random-access-storage')>} */
-  #storages = new Set()
+  #emitStateBound
+  /** @type {import('./lib/utils.js').DeferredPromise | undefined} */
+  #pendingIdle
 
   /**
    *
-   * @param {import('hypercore')<T, Buffer | string>[]} cores
+   * @param {import('hypercore')<T, any>[]} cores
    * @param {object} opts
    * @param {(entries: Entry<T>[]) => Promise<void>} opts.batch
    * @param {StorageParam} opts.storage
@@ -59,9 +57,7 @@ class MultiCoreIndexer extends TypedEmitter {
     super()
     this.#createStorage = MultiCoreIndexer.defaultStorage(storage)
     const coreIndexStreams = cores.map((core) => {
-      const storage = this.#createStorage(getStorageName(core))
-      this.#storages.add(storage)
-      return new CoreIndexStream(core, storage)
+      return new CoreIndexStream(core, this.#createStorage)
     })
     this.#indexStream = new MultiCoreIndexStream(coreIndexStreams, {
       highWaterMark: maxBatch,
@@ -78,10 +74,14 @@ class MultiCoreIndexer extends TypedEmitter {
       })
     )
     this.#indexStream.pipe(this.#writeStream)
+    this.#emitStateBound = this[kEmitState].bind(this)
     // This is needed because the source streams can start indexing before this
     // stream starts reading data. This ensures that the indexing state is
     // emitted when the source cores first append / download data
-    this.#indexStream.on('indexing', this.#handleIndexingBound)
+    this.#indexStream.on('indexing', this.#emitStateBound)
+    // This is needed for source streams that start empty, so that we know that
+    // the initial state of indexing has changed to idle
+    this.#indexStream.on('drained', this.#emitStateBound)
   }
 
   /**
@@ -93,30 +93,33 @@ class MultiCoreIndexer extends TypedEmitter {
 
   /**
    * Add a core to be indexed
-   * @param {import('hypercore')<T, Buffer | string>} core
+   * @param {import('hypercore')<T, any>} core
    */
   addCore(core) {
-    const storage = this.#createStorage(getStorageName(core))
-    this.#storages.add(storage)
-    const coreIndexStream = new CoreIndexStream(core, storage)
+    const coreIndexStream = new CoreIndexStream(core, this.#createStorage)
     this.#indexStream.addStream(coreIndexStream)
   }
 
+  /**
+   * Resolves when indexing state is 'idle'
+   */
+  async idle() {
+    if (this[kGetState]().current === 'idle') return
+    if (!this.#pendingIdle) {
+      this.#pendingIdle = pDefer()
+    }
+    return this.#pendingIdle.promise
+  }
+
   async close() {
-    this.#indexStream.off('indexing', this.#handleIndexingBound)
+    this.#indexStream.off('indexing', this.#emitStateBound)
+    this.#indexStream.off('drained', this.#emitStateBound)
     this.#writeStream.destroy()
     this.#indexStream.destroy()
     await Promise.all([
       once(this.#indexStream, 'close'),
       once(this.#writeStream, 'close'),
     ])
-    const storageClosePromises = []
-    for (const storage of this.#storages) {
-      const promisifiedClose = promisify(storage.close.bind(storage))
-      storageClosePromises.push(promisifiedClose())
-    }
-    this.#storages.clear()
-    await Promise.all(storageClosePromises)
   }
 
   /** @param {Entry<T>[]} entries */
@@ -140,17 +143,12 @@ class MultiCoreIndexer extends TypedEmitter {
     this[kEmitState]()
   }
 
-  [kHandleIndexing]() {
-    if (this.#state === 'indexing') return
-    this[kEmitState]()
-  }
-
   [kEmitState]() {
     const state = this[kGetState]()
     if (state.current !== this.#prevEmittedState?.current) {
       this.emit(state.current)
     }
-    // Only emit if remaining has changed
+    // Only emit if remaining has changed (which infers that state.current has changed)
     if (state.remaining !== this.#prevEmittedState?.remaining) {
       this.emit('index-state', state)
     }
@@ -158,9 +156,14 @@ class MultiCoreIndexer extends TypedEmitter {
   }
 
   [kGetState]() {
-    const remaining = (this.#lastRemaining = this.#indexStream.remaining)
+    const remaining = this.#indexStream.remaining
+    const drained = this.#indexStream.drained
     const prevState = this.#state
-    this.#state = remaining === 0 ? 'idle' : 'indexing'
+    this.#state = remaining === 0 && drained ? 'idle' : 'indexing'
+    if (this.#state === 'idle' && this.#pendingIdle) {
+      this.#pendingIdle.resolve()
+      this.#pendingIdle = undefined
+    }
     if (this.#state === 'indexing' && prevState === 'idle') {
       this.#rateMeasurementStart = Date.now()
     }
@@ -186,9 +189,3 @@ class MultiCoreIndexer extends TypedEmitter {
 }
 
 module.exports = MultiCoreIndexer
-
-/** @param {{ key: Buffer }} core */
-function getStorageName(core) {
-  const id = discoveryKey(core.key).toString('hex')
-  return [id.slice(0, 2), id.slice(2, 4), id].join('/')
-}

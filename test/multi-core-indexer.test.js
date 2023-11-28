@@ -1,17 +1,16 @@
 // @ts-check
 const MultiCoreIndexer = require('../')
 const { test } = require('tap')
-const { once } = require('events')
 const ram = require('random-access-memory')
 const {
   create,
   replicate,
   generateFixtures,
   createMultiple,
-  throttledIdle,
   sortEntries,
 } = require('./helpers')
 const { testKeypairs, expectedStorageNames } = require('./fixtures.js')
+const Hypercore = require('hypercore')
 
 /** @typedef {import('../lib/types').Entry<'binary'>} Entry */
 
@@ -34,13 +33,48 @@ test('Indexes all items already in a core', async (t) => {
     maxBatch: 50,
     storage: createStorage,
   })
-  await throttledIdle(indexer)
+  await indexer.idle()
   t.same(sortEntries(entries), sortEntries(expected))
   await indexer.close()
   t.ok(
     storages.every((storage) => storage.closed),
     'all storages are closed'
   )
+})
+
+test('Indexes all items already in a core (some empty cores)', async (t) => {
+  const cores = await createMultiple(5)
+  const expected = await generateFixtures(cores.slice(0, 3), 100)
+  /** @type {Entry[]} */
+  const entries = []
+
+  const indexer = new MultiCoreIndexer(cores, {
+    batch: async (data) => {
+      entries.push(...data)
+    },
+    maxBatch: 50,
+    storage: () => new ram(),
+  })
+  await indexer.idle()
+  t.same(sortEntries(entries), sortEntries(expected))
+  await indexer.close()
+})
+
+test('Multiple .idle() awaits', async (t) => {
+  const cores = await createMultiple(5)
+  const expected = await generateFixtures(cores, 100)
+  /** @type {Entry[]} */
+  const entries = []
+  const indexer = new MultiCoreIndexer(cores, {
+    batch: async (data) => {
+      entries.push(...data)
+    },
+    maxBatch: 50,
+    storage: () => new ram(),
+  })
+  await Promise.all([indexer.idle(), indexer.idle(), indexer.idle()])
+  t.same(sortEntries(entries), sortEntries(expected))
+  await indexer.close()
 })
 
 test('Indexes items appended after initial index', async (t) => {
@@ -55,12 +89,47 @@ test('Indexes items appended after initial index', async (t) => {
     storage: () => new ram(),
   })
   const expected = await generateFixtures(cores, 100)
-  await throttledIdle(indexer)
+  await indexer.idle()
   t.same(sortEntries(entries), sortEntries(expected))
   await indexer.close()
   t.pass('Indexer closed')
 })
 
+test('No cores, starts idle, indexing after core added', async (t) => {
+  const indexer = new MultiCoreIndexer([], {
+    batch: async () => {},
+    storage: () => new ram(),
+  })
+  t.equal(indexer.state.current, 'idle', 'starts in idle state')
+  await indexer.idle()
+  t.pass('indexer.idle() still resolves')
+  const core = await create()
+  indexer.addCore(core)
+  t.equal(indexer.state.current, 'indexing', 'indexing after core added')
+  await indexer.idle()
+  t.pass('indexer.idle() still resolves')
+  await indexer.close()
+  t.pass('Indexer closed')
+})
+
+test('Calling idle() when already idle still resolves', async (t) => {
+  const cores = await createMultiple(5)
+  const expected = await generateFixtures(cores, 10)
+  /** @type {Entry[]} */
+  const entries = []
+  const indexer = new MultiCoreIndexer(cores, {
+    batch: async (data) => {
+      entries.push(...data)
+    },
+    storage: () => new ram(),
+  })
+  await indexer.idle()
+  t.same(sortEntries(entries), sortEntries(expected))
+  await indexer.idle()
+  t.same(sortEntries(entries), sortEntries(expected))
+  await indexer.close()
+  t.pass('indexer closed')
+})
 test('Indexes cores added with addCore method', async (t) => {
   const cores = await createMultiple(5)
   /** @type {Entry[]} */
@@ -73,14 +142,14 @@ test('Indexes cores added with addCore method', async (t) => {
     storage: () => new ram(),
   })
   const initialExpected = await generateFixtures(cores, 100)
-  await throttledIdle(indexer)
+  await indexer.idle()
   t.same(sortEntries(entries), sortEntries(initialExpected))
   const newCores = await createMultiple(5)
   for (const core of newCores) {
     indexer.addCore(core)
   }
   const expected = await generateFixtures([...cores, ...newCores], 100)
-  await throttledIdle(indexer)
+  await indexer.idle()
   t.same(sortEntries(entries), sortEntries([...initialExpected, ...expected]))
   await indexer.close()
   t.pass('Indexer closed')
@@ -113,14 +182,14 @@ test('index sparse hypercores', async (t) => {
     },
     storage: () => new ram(),
   })
-  await throttledIdle(indexer)
+  await indexer.idle()
 
   t.same(sortEntries(entries), sortEntries(expected))
 
   for (const core of remoteCores) {
     await core.download({ start: 50, end: 60 }).downloaded()
   }
-  await throttledIdle(indexer)
+  await indexer.idle()
 
   t.same(sortEntries(entries), sortEntries([...expected, ...expected2]))
   await indexer.close()
@@ -147,14 +216,14 @@ test('Appends from a replicated core are indexed', async (t) => {
     },
     storage: () => new ram(),
   })
-  await throttledIdle(indexer)
+  await indexer.idle()
   t.same(sortEntries(entries), sortEntries(expected1))
 
   const expected2 = await generateFixtures(localCores, 50)
   for (const [i, remote] of remoteCores.entries()) {
     await remote.download({ start: 50, end: localCores[i].length }).downloaded()
   }
-  await throttledIdle(indexer)
+  await indexer.idle()
 
   t.same(sortEntries(entries), sortEntries([...expected1, ...expected2]))
   await indexer.close()
@@ -174,7 +243,7 @@ test('Maintains index state (memory storage)', async (t) => {
     },
     storage: createRAM,
   })
-  await once(indexer1, 'idle')
+  await indexer1.idle()
   t.same(sortEntries(entries1), sortEntries(expected1))
   await indexer1.close()
   t.pass('Indexer closed')
@@ -188,7 +257,7 @@ test('Maintains index state (memory storage)', async (t) => {
     },
     storage: createRAM,
   })
-  await once(indexer2, 'idle')
+  await indexer2.idle()
   t.same(sortEntries(entries2), sortEntries(expected2))
   await indexer2.close()
   t.pass('Indexer closed')
@@ -208,7 +277,7 @@ test('Maintains index state (file storage)', async (t) => {
       },
       storage: dir,
     })
-    await once(indexer1, 'idle')
+    await indexer1.idle()
     t.same(sortEntries(entries1), sortEntries(expected1))
     await indexer1.close()
     t.pass('Indexer closed')
@@ -222,11 +291,42 @@ test('Maintains index state (file storage)', async (t) => {
       },
       storage: dir,
     })
-    await once(indexer2, 'idle')
+    await indexer2.idle()
     t.same(sortEntries(entries2), sortEntries(expected2))
     await indexer2.close()
     t.pass('Indexer closed')
   })
+})
+
+test('Entries are re-indexed if index storage reset', async (t) => {
+  const cores = await createMultiple(5)
+  const expected = await generateFixtures(cores, 1000)
+
+  /** @type {Entry[]} */
+  const entries1 = []
+  const indexer1 = new MultiCoreIndexer(cores, {
+    batch: async (data) => {
+      entries1.push(...data)
+    },
+    storage: () => new ram(),
+  })
+  await indexer1.idle()
+  t.same(sortEntries(entries1), sortEntries(expected))
+  await indexer1.close()
+  t.pass('Indexer closed')
+
+  /** @type {Entry[]} */
+  const entries2 = []
+  const indexer2 = new MultiCoreIndexer(cores, {
+    batch: async (data) => {
+      entries2.push(...data)
+    },
+    storage: () => new ram(),
+  })
+  await indexer2.idle()
+  t.same(sortEntries(entries2), sortEntries(expected))
+  await indexer2.close()
+  t.pass('Indexer closed')
 })
 
 test('Entries are batched to batchMax when indexing is slower than Hypercore reads', async (t) => {
@@ -244,7 +344,7 @@ test('Entries are batched to batchMax when indexing is slower than Hypercore rea
       maxBatch: batchSize,
       storage: () => new ram(),
     })
-    await throttledIdle(indexer)
+    await indexer.idle()
     t.ok(
       batchSizes.filter((size) => size < batchSize).length <= 2,
       `Most batches are ${batchSize}`
@@ -266,7 +366,7 @@ test('Batches smaller than maxBatch when indexing is faster than hypercore reads
     maxBatch: batchSize,
     storage: () => new ram(),
   })
-  await throttledIdle(indexer)
+  await indexer.idle()
   t.ok(
     batchSizes.every((size) => size < batchSize),
     `All batches are smaller than maxBatch`
@@ -291,7 +391,7 @@ test('sync state / progress', async (t) => {
     storage: () => new ram(),
   })
   indexer.on('index-state', (state) => stateEvents.push(state))
-  await throttledIdle(indexer)
+  await indexer.idle()
   const actualRate =
     (numberOfCores * entriesPerCore * 1000) / (Date.now() - start)
   t.ok(stateEvents.length > 10, 'At least 10 index-state events')
@@ -329,13 +429,28 @@ test('state getter', async (t) => {
     },
     storage: () => new ram(),
   })
-  t.same(indexer.state.current, 'idle')
-  await throttledIdle(indexer)
+  t.same(indexer.state.current, 'indexing')
+  await indexer.idle()
   await generateFixtures(cores, 100)
   t.same(indexer.state.current, 'indexing')
-  await throttledIdle(indexer)
+  await indexer.idle()
   t.same(indexer.state.current, 'idle')
   t.same(entries.length, 200)
+  await indexer.close()
+  t.pass('Indexer closed')
+})
+
+test('empty cores, no indexing event before idle', async (t) => {
+  const cores = await createMultiple(2)
+  const indexer = new MultiCoreIndexer(cores, {
+    batch: async () => {},
+    storage: () => new ram(),
+  })
+  indexer.on('index-state', (state) => {
+    if (state.current === 'indexing') t.fail()
+  })
+  indexer.on('indexing', t.fail)
+  t.same(indexer.state.current, 'indexing')
   await indexer.close()
   t.pass('Indexer closed')
 })
@@ -356,7 +471,7 @@ test('state.remaining does not update until after batch function resolves', asyn
     },
     storage: () => new ram(),
   })
-  await throttledIdle(indexer)
+  await indexer.idle()
   t.same(indexer.state.current, 'idle')
   t.same(entries.length, 1)
   await indexer.close()
@@ -400,7 +515,7 @@ test('Closing before batch complete should resume on next start', async (t) => {
     },
     storage: createRAM,
   })
-  await once(indexer2, 'idle')
+  await indexer2.idle()
   t.equal(entries.length, expected.length)
   // t.same(sortEntries(entries), sortEntries(expected))
   await indexer2.close()
@@ -425,5 +540,50 @@ test('Consistent storage folders', async (t) => {
   for (const keyPair of testKeypairs.slice(5)) {
     indexer.addCore(await create({ keyPair }))
   }
+  await indexer.idle()
   t.same(storageNames.sort(), expectedStorageNames)
+})
+
+test('Works with non-ready cores', async (t) => {
+  /** @type {Hypercore[]} */
+  const cores = []
+  for (let i = 0; i < 5; i++) {
+    cores.push(new Hypercore(() => new ram()))
+  }
+  const indexer = new MultiCoreIndexer(cores, {
+    batch: async () => {},
+    storage: () => new ram(),
+  })
+  t.equal(indexer.state.current, 'indexing')
+  await indexer.idle()
+  t.pass('indexer.idle() resolves')
+  await indexer.close()
+})
+
+test('Indexes all items already in a core - cores not ready', async (t) => {
+  /** @type {Hypercore[]} */
+  const cores = []
+  /** @type {Array<ReturnType<(typeof ram)['reusable']>>} */
+  const storages = []
+  for (let i = 0; i < 5; i++) {
+    const storage = ram.reusable()
+    storages.push(storage)
+    cores.push(new Hypercore(storage))
+  }
+  const expected = await generateFixtures(cores, 100)
+  await Promise.all(cores.map((core) => core.close()))
+  for (let i = 0; i < 5; i++) {
+    cores[i] = new Hypercore(storages[i])
+  }
+  /** @type {Entry[]} */
+  const entries = []
+  const indexer = new MultiCoreIndexer(cores, {
+    batch: async (data) => {
+      entries.push(...data)
+    },
+    storage: () => new ram(),
+  })
+  await indexer.idle()
+  t.same(sortEntries(entries), sortEntries(expected))
+  await indexer.close()
 })

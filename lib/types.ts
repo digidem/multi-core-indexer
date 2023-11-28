@@ -8,13 +8,21 @@ export interface IndexState {
   entriesPerSecond: number
 }
 
+export interface IndexStreamState {
+  remaining: number
+  drained: boolean
+}
+
 export interface IndexEvents {
   'index-state': (state: IndexState) => void
   indexing: () => void
   idle: () => void
 }
 
-export type IndexStreamEvents<T> = ReadableEvents<T> & IndexEvents
+export type IndexStreamEvents<T> = ReadableEvents<T> & {
+  drained: () => void
+  indexing: () => void
+}
 
 export type ValueEncoding = 'binary' | 'utf-8' | 'json'
 
