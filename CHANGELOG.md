@@ -2,6 +2,12 @@
 
 All notable changes to this project will be documented in this file. See [standard-version](https://github.com/conventional-changelog/standard-version) for commit guidelines.
 
+## [1.0.0-alpha.9](https://github.com/digidem/multi-core-indexer/compare/v1.0.0-alpha.8...v1.0.0-alpha.9) (2023-11-28)
+
+### Features
+
+- `.idle()`, initial state 'indexing', non-ready cores ([#22](https://github.com/digidem/multi-core-indexer/issues/22), [#24](https://github.com/digidem/multi-core-indexer/issues/24)) ([89ac7ae](https://github.com/digidem/multi-core-indexer/commit/89ac7ae4551b75713ca2a13c3a5e2eb741eb4519)), closes [#23](https://github.com/digidem/multi-core-indexer/issues/23)
+
 ## [1.0.0-alpha.8](https://github.com/digidem/multi-core-indexer/compare/v1.0.0-alpha.7...v1.0.0-alpha.8) (2023-11-16)
 
 ### Bug Fixes
