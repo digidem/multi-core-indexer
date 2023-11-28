@@ -7,7 +7,7 @@ const {
   create,
   replicate,
   generateFixture,
-  throttledDrain: throttledIdle,
+  throttledDrain,
 } = require('../helpers')
 const Hypercore = require('hypercore')
 
@@ -102,11 +102,11 @@ test('Readable stream from sparse hypercore', async (t) => {
   /** @type {Buffer[]} */
   const entries = []
   stream.on('data', (entry) => entries.push(entry.block))
-  await throttledIdle(stream)
+  await throttledDrain(stream)
 
   t.same(entries, blocks.slice(5, 20))
   const range2 = b.download({ start: 50, end: 60 })
-  await Promise.all([range2.downloaded(), throttledIdle(stream)])
+  await Promise.all([range2.downloaded(), throttledDrain(stream)])
 
   t.same(
     entries.sort(),
@@ -136,7 +136,7 @@ test("'indexing' and 'drained' events are paired", async (t) => {
   stream.resume()
 
   const range = b.download({ start: 0, end: a.length })
-  await Promise.all([range.downloaded(), throttledIdle(stream)])
+  await Promise.all([range.downloaded(), throttledDrain(stream)])
 
   t.equal(indexingEvents, idleEvents)
   // This is just to check that we're actually testing something
@@ -158,13 +158,13 @@ test('Appends from a replicated core are indexed', async (t) => {
   /** @type {Buffer[]} */
   const entries = []
   stream.on('data', (entry) => entries.push(entry.block))
-  await throttledIdle(stream)
+  await throttledDrain(stream)
 
   t.same(entries, blocks1)
   const range2 = b.download({ start: 50, end: -1 })
   const blocks2 = generateFixture(50, 100)
   await a.append(blocks2)
-  await throttledIdle(stream)
+  await throttledDrain(stream)
   range2.destroy()
 
   t.same(entries.sort(), [...blocks1, ...blocks2].sort())
@@ -183,7 +183,7 @@ test('Maintains index state', async (t) => {
 
   const blocks = generateFixture(0, 1000)
   await a.append(blocks.slice(0, 500))
-  await throttledIdle(stream1)
+  await throttledDrain(stream1)
   t.same(entries.sort(), blocks.slice(0, 500).sort())
   stream1.destroy()
   await once(stream1, 'close')
@@ -193,7 +193,7 @@ test('Maintains index state', async (t) => {
     entries.push(entry.block)
     stream2.setIndexed(entry.index)
   })
-  await throttledIdle(stream2)
+  await throttledDrain(stream2)
   t.same(entries.sort(), blocks.sort())
 })
 
