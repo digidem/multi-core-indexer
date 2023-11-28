@@ -3,11 +3,9 @@ const { Writable } = require('streamx')
 const { TypedEmitter } = require('tiny-typed-emitter')
 const { once } = require('events')
 const raf = require('random-access-file')
-const { discoveryKey } = require('hypercore-crypto')
 // const log = require('debug')('multi-core-indexer')
 const { CoreIndexStream } = require('./lib/core-index-stream')
 const { MultiCoreIndexStream } = require('./lib/multi-core-index-stream')
-const { promisify } = require('util')
 const { pDefer } = require('./lib/utils.js')
 
 const DEFAULT_BATCH_SIZE = 100
@@ -43,15 +41,13 @@ class MultiCoreIndexer extends TypedEmitter {
   #createStorage
   /** @type {IndexState | undefined} */
   #prevEmittedState
-  /** @type {Set<import('random-access-storage')>} */
-  #storages = new Set()
   #emitStateBound
   /** @type {import('./lib/utils.js').DeferredPromise | undefined} */
   #pendingIdle
 
   /**
    *
-   * @param {import('hypercore')<T, Buffer | string>[]} cores
+   * @param {import('hypercore')<T, any>[]} cores
    * @param {object} opts
    * @param {(entries: Entry<T>[]) => Promise<void>} opts.batch
    * @param {StorageParam} opts.storage
@@ -61,9 +57,7 @@ class MultiCoreIndexer extends TypedEmitter {
     super()
     this.#createStorage = MultiCoreIndexer.defaultStorage(storage)
     const coreIndexStreams = cores.map((core) => {
-      const storage = this.#createStorage(getStorageName(core))
-      this.#storages.add(storage)
-      return new CoreIndexStream(core, storage)
+      return new CoreIndexStream(core, this.#createStorage)
     })
     this.#indexStream = new MultiCoreIndexStream(coreIndexStreams, {
       highWaterMark: maxBatch,
@@ -99,12 +93,10 @@ class MultiCoreIndexer extends TypedEmitter {
 
   /**
    * Add a core to be indexed
-   * @param {import('hypercore')<T, Buffer | string>} core
+   * @param {import('hypercore')<T, any>} core
    */
   addCore(core) {
-    const storage = this.#createStorage(getStorageName(core))
-    this.#storages.add(storage)
-    const coreIndexStream = new CoreIndexStream(core, storage)
+    const coreIndexStream = new CoreIndexStream(core, this.#createStorage)
     this.#indexStream.addStream(coreIndexStream)
   }
 
@@ -128,13 +120,6 @@ class MultiCoreIndexer extends TypedEmitter {
       once(this.#indexStream, 'close'),
       once(this.#writeStream, 'close'),
     ])
-    const storageClosePromises = []
-    for (const storage of this.#storages) {
-      const promisifiedClose = promisify(storage.close.bind(storage))
-      storageClosePromises.push(promisifiedClose())
-    }
-    this.#storages.clear()
-    await Promise.all(storageClosePromises)
   }
 
   /** @param {Entry<T>[]} entries */
@@ -204,9 +189,3 @@ class MultiCoreIndexer extends TypedEmitter {
 }
 
 module.exports = MultiCoreIndexer
-
-/** @param {{ key: Buffer }} core */
-function getStorageName(core) {
-  const id = discoveryKey(core.key).toString('hex')
-  return [id.slice(0, 2), id.slice(2, 4), id].join('/')
-}
