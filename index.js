@@ -128,8 +128,8 @@ class MultiCoreIndexer extends TypedEmitter {
     /* istanbul ignore if - not sure this is necessary, but better safe than sorry */
     if (!entries.length) return
     await this.#batch(entries)
-    for (const { key, index } of entries) {
-      this.#indexStream.setIndexed(key.toString('hex'), index)
+    for (const { discoveryId, index } of entries) {
+      this.#indexStream.setIndexed(discoveryId, index)
     }
     const batchTime = Date.now() - this.#rateMeasurementStart
     // Current rate entries per second

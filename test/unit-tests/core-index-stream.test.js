@@ -33,7 +33,8 @@ test('destroy before open', async (t) => {
 test('Indexes all items already in a core', async (t) => {
   const a = await create()
   const blocks = generateFixture(0, 10)
-  const expected = blocksToExpected(blocks, a.key)
+  // @ts-ignore
+  const expected = blocksToExpected(blocks, a.discoveryKey.toString('hex'))
   await a.append(blocks)
   /** @type {any[]} */
   const entries = []
@@ -56,7 +57,8 @@ test('.remaining property is accurate', async (t) => {
   const totalBlocks = 100
   const a = await create()
   const blocks = generateFixture(0, totalBlocks)
-  const expected = blocksToExpected(blocks, a.key)
+  // @ts-ignore
+  const expected = blocksToExpected(blocks, a.discoveryKey.toString('hex'))
   await a.append(blocks)
   /** @type {any[]} */
   const entries = []
@@ -81,7 +83,8 @@ test('Indexes items appended after initial index', async (t) => {
   stream.on('data', (entry) => entries.push(entry))
   await once(stream, 'drained')
   t.same(entries, [], 'no entries before append')
-  const expected = blocksToExpected(blocks, a.key)
+  // @ts-ignore
+  const expected = blocksToExpected(blocks, a.discoveryKey.toString('hex'))
   await a.append(blocks)
   await once(stream, 'drained')
   t.same(entries, expected)
@@ -96,7 +99,7 @@ test('Readable stream from sparse hypercore', async (t) => {
   replicate(a, b, t)
 
   const range = b.download({ start: 5, end: 20 })
-  await range.downloaded()
+  await range.done()
 
   const stream = new CoreIndexStream(b, () => new ram())
   /** @type {Buffer[]} */
@@ -106,7 +109,7 @@ test('Readable stream from sparse hypercore', async (t) => {
 
   t.same(entries, blocks.slice(5, 20))
   const range2 = b.download({ start: 50, end: 60 })
-  await Promise.all([range2.downloaded(), throttledDrain(stream)])
+  await Promise.all([range2.done(), throttledDrain(stream)])
 
   t.same(
     entries.sort(),
@@ -118,6 +121,7 @@ test("'indexing' and 'drained' events are paired", async (t) => {
   const a = await create()
   const blocks = generateFixture(0, 100)
   await a.append(blocks)
+  // @ts-ignore
   const b = await create(a.key)
 
   replicate(a, b, t)
@@ -136,7 +140,7 @@ test("'indexing' and 'drained' events are paired", async (t) => {
   stream.resume()
 
   const range = b.download({ start: 0, end: a.length })
-  await Promise.all([range.downloaded(), throttledDrain(stream)])
+  await Promise.all([range.done(), throttledDrain(stream)])
 
   t.equal(indexingEvents, idleEvents)
   // This is just to check that we're actually testing something
@@ -152,7 +156,7 @@ test('Appends from a replicated core are indexed', async (t) => {
   replicate(a, b, t)
   await b.update({ wait: true })
   const range1 = b.download({ start: 0, end: b.length })
-  await range1.downloaded()
+  await range1.done()
 
   const stream = new CoreIndexStream(b, () => new ram())
   /** @type {Buffer[]} */
@@ -200,12 +204,12 @@ test('Maintains index state', async (t) => {
 /**
  *
  * @param {Buffer[]} blocks
- * @param {Buffer} key
- * @returns
+ * @param {string} discoveryId
+ * @returns {import('../../types/index.js').Entry[]}
  */
-function blocksToExpected(blocks, key) {
+function blocksToExpected(blocks, discoveryId) {
   return blocks.map((block, i) => ({
-    key,
+    discoveryId,
     block,
     index: i,
   }))
