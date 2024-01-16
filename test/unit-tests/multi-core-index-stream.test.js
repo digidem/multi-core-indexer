@@ -182,7 +182,7 @@ test('Appends from a replicated core are indexed', async (t) => {
   t.same(sortEntries(entries), sortEntries(expected1))
 
   const expected2 = await generateFixtures(localCores, 50)
-  for (const remote of remoteCores.values()) {
+  for (const remote of remoteCores) {
     remote.download({ start: 0, end: remote.length })
   }
   await throttledDrain(stream)

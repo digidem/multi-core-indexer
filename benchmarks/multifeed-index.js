@@ -62,7 +62,7 @@ async function createCores(multi, count) {
 async function generateFixtures(cores, count) {
   /** @type {Entry[]} */
   const entries = []
-  for (const core of cores.values()) {
+  for (const core of cores) {
     const offset = core.length
     const blocks = generateFixture(offset, offset + count)
     await promisify(core.append.bind(core))(blocks)
