@@ -155,6 +155,180 @@ test('Indexes cores added with addCore method', async (t) => {
   t.pass('Indexer closed')
 })
 
+test('removing cores', async (t) => {
+  t.test('removing a core that was never added', async (t) => {
+    const ignoredCores = await createMultiple(5)
+    const coreToRemove = await create()
+
+    const indexer = new MultiCoreIndexer(ignoredCores, {
+      batch: async () => {},
+      storage: () => new ram(),
+    })
+    await indexer.idle()
+
+    indexer.removeCoreAndUnlinkIndexStorage(coreToRemove)
+    t.equal(
+      indexer.state.current,
+      'idle',
+      'Immediately idle after "removing" a core that was never there'
+    )
+
+    await indexer.close()
+    t.pass('Indexer closed')
+  })
+
+  t.test('double-removing a core', async (t) => {
+    const cores = await createMultiple(5)
+    const [coreToRemove] = cores
+
+    const indexer = new MultiCoreIndexer(cores, {
+      batch: async () => {},
+      storage: () => new ram(),
+    })
+    await indexer.idle()
+
+    indexer.removeCoreAndUnlinkIndexStorage(coreToRemove)
+    indexer.removeCoreAndUnlinkIndexStorage(coreToRemove)
+    t.equal(
+      indexer.state.current,
+      'idle',
+      'Immediately idle after double-removing a core'
+    )
+
+    await indexer.close()
+    t.pass('Indexer closed')
+  })
+
+  t.test('before anything is appended', async (t) => {
+    const cores = await createMultiple(5)
+    const [coreToRemove] = cores
+    /** @type {Entry[]} */
+    const entries = []
+    const indexer = new MultiCoreIndexer(cores, {
+      batch: async (data) => {
+        entries.push(...data)
+      },
+      storage: () => new ram(),
+    })
+    indexer.removeCoreAndUnlinkIndexStorage(coreToRemove)
+    const expected = (await generateFixtures(cores, 100)).filter(
+      (entry) => !entry.key.equals(coreToRemove.key)
+    )
+    await indexer.idle()
+    t.same(sortEntries(entries), sortEntries(expected))
+    await indexer.close()
+    t.pass('Indexer closed')
+  })
+
+  t.test('after some appends', async (t) => {
+    const cores = await createMultiple(5)
+    const [coreToRemove] = cores
+
+    /** @type {Entry[]} */
+    const entries = []
+    const indexer = new MultiCoreIndexer(cores, {
+      batch: async (data) => {
+        entries.push(...data)
+      },
+      storage: () => new ram(),
+    })
+    const expected1 = await generateFixtures(cores, 100)
+    await indexer.idle()
+
+    indexer.removeCoreAndUnlinkIndexStorage(coreToRemove)
+    await indexer.idle()
+    const expected2 = (await generateFixtures(cores, 100)).filter(
+      (entry) => !entry.key.equals(coreToRemove.key)
+    )
+    await indexer.idle()
+    t.same(sortEntries(entries), sortEntries([...expected1, ...expected2]))
+    await indexer.close()
+    t.pass('Indexer closed')
+  })
+
+  t.test('re-indexes a core that was re-added', async (t) => {
+    const core = await create()
+    /** @type {Entry[]} */
+    const entries = []
+    const indexer = new MultiCoreIndexer([core], {
+      batch: async (data) => {
+        entries.push(...data)
+      },
+      storage: () => new ram(),
+    })
+    const expectedFirstBatch = await generateFixtures([core], 100)
+    await indexer.idle()
+
+    await indexer.removeCoreAndUnlinkIndexStorage(core)
+    const expectedSecondBatch = await generateFixtures([core], 100)
+    await indexer.idle()
+    t.same(sortEntries(entries), sortEntries(expectedFirstBatch))
+
+    indexer.addCore(core)
+    await indexer.idle()
+    t.same(
+      sortEntries(entries),
+      sortEntries([
+        ...expectedFirstBatch,
+        ...expectedFirstBatch,
+        ...expectedSecondBatch,
+      ])
+    )
+
+    await indexer.close()
+    t.pass('Indexer closed')
+  })
+
+  t.test('removing non-ready cores', async (t) => {
+    const core = new Hypercore(() => new ram())
+
+    let entriesSeen = 0
+    const indexer = new MultiCoreIndexer([core], {
+      batch: async (data) => {
+        entriesSeen += data.length
+      },
+      storage: () => new ram(),
+    })
+
+    t.ok(!core.key, 'Core should not have a key. Test is not set up correctly')
+
+    await indexer.removeCoreAndUnlinkIndexStorage(core)
+
+    await generateFixtures([core], 100)
+
+    t.equal(entriesSeen, 0, 'No entries should have been seen')
+
+    await indexer.close()
+    t.pass('Indexer closed')
+  })
+
+  t.test("failure to remove a core's storage", async (t) => {
+    class StorageThatCannotBeUnlinked extends ram {
+      _unlink(req) {
+        req.callback(new Error('Failed to unlink!'), null)
+      }
+    }
+
+    const core = new Hypercore(() => new ram())
+
+    const indexer = new MultiCoreIndexer([core], {
+      batch: async () => {},
+      storage: () => new StorageThatCannotBeUnlinked(),
+    })
+
+    await core.ready()
+    await indexer.idle()
+
+    await t.rejects(
+      indexer.removeCoreAndUnlinkIndexStorage(core),
+      'Failed to unlink!'
+    )
+
+    await indexer.close()
+    t.pass('Indexer closed')
+  })
+})
+
 test('index sparse hypercores', async (t) => {
   const coreCount = 5
   const localCores = await createMultiple(coreCount)

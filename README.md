@@ -141,6 +141,17 @@ Type: `Hypercore`
 Add a hypercore to the indexer. Must have the same value encoding as other
 hypercores already in the indexer.
 
+### indexer.removeCoreAndUnlinkIndexStorage(core)
+
+#### core
+
+_Required_\
+Type: `Hypercore`
+
+Remove a core from being indexed and unlink its storage. To be clear, this destroys the index's storage and doesn't touch the Hypercore's storage.
+
+If the core is not being indexed (or was previously removed), this is a no-op.
+
 ### indexer.close()
 
 Stop the indexer and flush index state to storage. This will not close the

@@ -29,6 +29,8 @@ const MOVING_AVG_FACTOR = 5
 class MultiCoreIndexer extends TypedEmitter {
   #indexStream
   #writeStream
+  /** @type {Map<import('hypercore')<T, any>, CoreIndexStream<T>>} */
+  #coreIndexStreamsByCore = new Map()
   #batch
   /** @type {import('./lib/types').IndexStateCurrent} */
   #state = 'indexing'
@@ -53,9 +55,9 @@ class MultiCoreIndexer extends TypedEmitter {
   constructor(cores, { batch, maxBatch = DEFAULT_BATCH_SIZE, storage }) {
     super()
     this.#createStorage = MultiCoreIndexer.defaultStorage(storage)
-    const coreIndexStreams = cores.map((core) => {
-      return new CoreIndexStream(core, this.#createStorage)
-    })
+    const coreIndexStreams = cores.map((core) =>
+      this.#createCoreIndexStream(core)
+    )
     this.#indexStream = new MultiCoreIndexStream(coreIndexStreams, {
       highWaterMark: maxBatch,
     })
@@ -92,8 +94,23 @@ class MultiCoreIndexer extends TypedEmitter {
    * @param {import('hypercore')<T, any>} core
    */
   addCore(core) {
-    const coreIndexStream = new CoreIndexStream(core, this.#createStorage)
+    const coreIndexStream = this.#createCoreIndexStream(core)
     this.#indexStream.addStream(coreIndexStream)
+  }
+
+  /**
+   * Remove a core from being indexed and unlink its storage. To be clear, this destroys the index's storage and doesn't touch the Hypercore's storage.
+   *
+   * If the core is not being indexed (or was previously removed), this is a no-op.
+   *
+   * @param {import('hypercore')<T, any>} core
+   * @returns {Promise<void>}
+   */
+  async removeCoreAndUnlinkIndexStorage(core) {
+    const coreIndexStream = this.#coreIndexStreamsByCore.get(core)
+    if (!coreIndexStream) return
+    await this.#indexStream.removeStreamAndUnlinkStorage(coreIndexStream)
+    this.#coreIndexStreamsByCore.delete(core)
   }
 
   /**
@@ -116,6 +133,16 @@ class MultiCoreIndexer extends TypedEmitter {
       once(this.#indexStream, 'close'),
       once(this.#writeStream, 'close'),
     ])
+  }
+
+  /**
+   * @param {import('hypercore')<T, any>} core
+   * @returns {CoreIndexStream<T>}
+   */
+  #createCoreIndexStream(core) {
+    const coreIndexStream = new CoreIndexStream(core, this.#createStorage)
+    this.#coreIndexStreamsByCore.set(core, coreIndexStream)
+    return coreIndexStream
   }
 
   /** @param {Entry<T>[]} entries */
