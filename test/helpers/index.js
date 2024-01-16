@@ -74,7 +74,7 @@ function generateFixture(start, end) {
 async function generateFixtures(cores, count) {
   /** @type {Entry[]} */
   const entries = []
-  for (const core of cores.values()) {
+  for (const core of cores) {
     const offset = core.length
     const blocks = generateFixture(offset, offset + count)
     await core.append(blocks)
