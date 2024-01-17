@@ -12,9 +12,6 @@ const DEFAULT_BATCH_SIZE = 100
 // The indexing rate (in entries per second) is calculated as an exponential
 // moving average. A factor > 1 will put more weight on previous values.
 const MOVING_AVG_FACTOR = 5
-const kHandleEntries = Symbol('handleEntries')
-const kEmitState = Symbol('emitState')
-const kGetState = Symbol('getState')
 
 /** @typedef {string | ((name: string) => import('random-access-storage'))} StorageParam */
 /** @typedef {import('./lib/types').ValueEncoding} ValueEncoding */
@@ -66,15 +63,14 @@ class MultiCoreIndexer extends TypedEmitter {
     this.#writeStream = /** @type {Writable<Entry<T>>} */ (
       new Writable({
         writev: (entries, cb) => {
-          // @ts-ignore - I don't know why TS does not like this
-          this[kHandleEntries](entries).then(() => cb(), cb)
+          this.#handleEntries(entries).then(() => cb(), cb)
         },
         highWaterMark: maxBatch,
         byteLength: () => 1,
       })
     )
     this.#indexStream.pipe(this.#writeStream)
-    this.#emitStateBound = this[kEmitState].bind(this)
+    this.#emitStateBound = this.#emitState.bind(this)
     // This is needed because the source streams can start indexing before this
     // stream starts reading data. This ensures that the indexing state is
     // emitted when the source cores first append / download data
@@ -88,7 +84,7 @@ class MultiCoreIndexer extends TypedEmitter {
    * @type {IndexState}
    */
   get state() {
-    return this[kGetState]()
+    return this.#getState()
   }
 
   /**
@@ -104,7 +100,7 @@ class MultiCoreIndexer extends TypedEmitter {
    * Resolves when indexing state is 'idle'
    */
   async idle() {
-    if (this[kGetState]().current === 'idle') return
+    if (this.#getState().current === 'idle') return
     if (!this.#pendingIdle) {
       this.#pendingIdle = pDefer()
     }
@@ -123,8 +119,8 @@ class MultiCoreIndexer extends TypedEmitter {
   }
 
   /** @param {Entry<T>[]} entries */
-  async [kHandleEntries](entries) {
-    this[kEmitState]()
+  async #handleEntries(entries) {
+    this.#emitState()
     /* istanbul ignore if - not sure this is necessary, but better safe than sorry */
     if (!entries.length) return
     await this.#batch(entries)
@@ -140,11 +136,11 @@ class MultiCoreIndexer extends TypedEmitter {
     // Set this at the end of batch rather than start so the timing also
     // includes the reads from the index streams
     this.#rateMeasurementStart = Date.now()
-    this[kEmitState]()
+    this.#emitState()
   }
 
-  [kEmitState]() {
-    const state = this[kGetState]()
+  #emitState() {
+    const state = this.#getState()
     if (state.current !== this.#prevEmittedState?.current) {
       this.emit(state.current)
     }
@@ -155,7 +151,7 @@ class MultiCoreIndexer extends TypedEmitter {
     this.#prevEmittedState = state
   }
 
-  [kGetState]() {
+  #getState() {
     const remaining = this.#indexStream.remaining
     const drained = this.#indexStream.drained
     const prevState = this.#state
