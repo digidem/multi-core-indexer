@@ -32,7 +32,6 @@ class MultiCoreIndexer extends TypedEmitter {
   #batch
   /** @type {import('./lib/types').IndexStateCurrent} */
   #state = 'indexing'
-  #lastRemaining = -1
   #rateMeasurementStart = Date.now()
   #rate = 0
   #createStorage
