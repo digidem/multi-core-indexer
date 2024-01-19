@@ -6,6 +6,7 @@ const ram = require('random-access-memory')
 const BLOCK_LENGTH = Buffer.from('block000000').byteLength
 
 /** @typedef {import('../../lib/types').Entry<'binary'>} Entry */
+/** @typedef {import('node:events').EventEmitter} EventEmitter */
 
 module.exports = {
   create,
@@ -14,6 +15,7 @@ module.exports = {
   generateFixtures,
   createMultiple,
   throttledDrain,
+  throttledIdle,
   sortEntries,
   logEntries,
   blocksToExpected,
@@ -87,24 +89,37 @@ async function generateFixtures(cores, count) {
  * The index stream can become momentarily drained between reads and
  * appends/downloads of new data. This throttle drained will resolve only when
  * the stream has remained drained for > 10ms
- * @param {import('events').EventEmitter} emitter
+ * @param {EventEmitter} emitter
  * @returns {Promise<void>}
  */
-async function throttledDrain(emitter) {
+function throttledDrain(emitter) {
+  return throttledStreamEvent(emitter, 'drained')
+}
+
+function throttledIdle(emitter) {
+  return throttledStreamEvent(emitter, 'idle')
+}
+
+/**
+ * @param {EventEmitter} emitter
+ * @param {string} eventName
+ * @returns {Promise<void>}
+ */
+function throttledStreamEvent(emitter, eventName) {
   return new Promise((resolve) => {
     /** @type {ReturnType<setTimeout>} */
     let timeoutId
 
-    function onDrained() {
+    function onEvent() {
       clearTimeout(timeoutId)
       timeoutId = setTimeout(() => {
-        emitter.off('drained', onDrained)
+        emitter.off(eventName, onEvent)
         emitter.off('indexing', onIndexing)
         resolve()
       }, 10)
     }
 
-    emitter.on('drained', onDrained)
+    emitter.on(eventName, onEvent)
     emitter.on('indexing', onIndexing)
     function onIndexing() {
       clearTimeout(timeoutId)
