@@ -27,6 +27,7 @@
   },
   "devDependencies": {
     "@digidem/types": "^1.0.1",
+    "@types/nanobench": "^3.0.0",
     "@types/sodium-native": "^2.3.5",
     "@types/tap": "^15.0.8",
     "brittle": "^3.3.2",
