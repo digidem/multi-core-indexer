@@ -206,6 +206,7 @@ test('Appends from a replicated core are indexed', async (t) => {
     const remote = (remoteCores[i] = await create(core.key))
     replicate(core, remoteCores[i], t)
     await remote.update({ wait: true })
+    // @ts-ignore - Hypercore typings are missing
     await remote.download({ start: 0, end: remote.length }).downloaded()
   }
   /** @type {Entry[]} */
@@ -495,6 +496,7 @@ test('Closing before batch complete should resume on next start', async (t) => {
   await /** @type {Promise<void>} */ (
     new Promise((res) => {
       indexer1.on('index-state', onIndexState)
+      /** @param {import('../lib/types').IndexState} state */
       function onIndexState(state) {
         if (state.remaining > 2500) return
         indexer1.off('index-state', onIndexState)
@@ -524,11 +526,13 @@ test('Closing before batch complete should resume on next start', async (t) => {
 
 // This checks that storage names do not change between versions, which would be a breaking change
 test('Consistent storage folders', async (t) => {
+  /** @type {string[]} */
   const storageNames = []
   const cores = []
   for (const keyPair of testKeypairs.slice(0, 5)) {
     cores.push(await create({ keyPair }))
   }
+  /** @param {string} name */
   function createStorage(name) {
     storageNames.push(name)
     return new ram()

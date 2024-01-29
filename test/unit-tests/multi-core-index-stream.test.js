@@ -14,12 +14,15 @@ const {
   sortEntries,
 } = require('../helpers')
 
+/** @typedef {import('../../types/index.js').Entry} Entry */
+
 test('Indexes all items already in a core', async (t) => {
   const cores = await createMultiple(5)
   const expected = await generateFixtures(cores, 1000)
   const indexStreams = cores.map(
     (core) => new CoreIndexStream(core, () => new ram())
   )
+  /** @type {Entry[]} */
   const entries = []
   const stream = new MultiCoreIndexStream(indexStreams)
   const ws = new Writable({
@@ -46,6 +49,7 @@ test('Adding index streams after initialization', async (t) => {
   const indexStreams = cores.map(
     (core) => new CoreIndexStream(core, () => new ram())
   )
+  /** @type {Entry[]} */
   const entries = []
   const stream = new MultiCoreIndexStream(indexStreams.slice(0, 2))
   stream.addStream(indexStreams[2])
@@ -77,13 +81,14 @@ test('.remaining is as expected', async (t) => {
   const indexStreams = cores.map(
     (core) => new CoreIndexStream(core, () => new ram())
   )
+  /** @type {Entry[]} */
   const entries = []
   const stream = new MultiCoreIndexStream(indexStreams, { highWaterMark: 10 })
   const ws = new Writable({
     writev: (data, cb) => {
       entries.push(...data)
-      for (const { key, index } of data) {
-        stream.setIndexed(key.toString('hex'), index)
+      for (const { discoveryId, index } of data) {
+        stream.setIndexed(discoveryId, index)
       }
       t.equal(
         stream.remaining,
@@ -110,6 +115,7 @@ test('Indexes items appended after initial index', async (t) => {
   const indexStreams = cores.map(
     (core) => new CoreIndexStream(core, () => new ram())
   )
+  /** @type {Entry[]} */
   const entries = []
   const stream = new MultiCoreIndexStream(indexStreams, { highWaterMark: 10 })
   stream.on('data', (entry) => entries.push(entry))
@@ -126,7 +132,9 @@ test('Indexes items appended after initial index', async (t) => {
 test('index sparse hypercores', async (t) => {
   const coreCount = 5
   const localCores = await createMultiple(coreCount)
+  /** @type {Entry[]} */
   const expected = []
+  /** @type {Entry[]} */
   const expected2 = []
   const indexStreams = []
   const remoteCores = Array(coreCount)
@@ -140,9 +148,10 @@ test('index sparse hypercores', async (t) => {
 
   for (const core of remoteCores) {
     const range = core.download({ start: 5, end: 20 })
-    await range.downloaded()
+    await range.done()
     indexStreams.push(new CoreIndexStream(core, () => new ram()))
   }
+  /** @type {Entry[]} */
   const entries = []
   const stream = new MultiCoreIndexStream(indexStreams, { highWaterMark: 10 })
   stream.on('data', (entry) => entries.push(entry))
@@ -152,9 +161,7 @@ test('index sparse hypercores', async (t) => {
 
   await Promise.all([
     throttledDrain(stream),
-    ...remoteCores.map((core) =>
-      core.download({ start: 50, end: 60 }).downloaded()
-    ),
+    ...remoteCores.map((core) => core.download({ start: 50, end: 60 }).done()),
   ])
 
   t.same(sortEntries(entries), sortEntries([...expected, ...expected2]))
@@ -171,9 +178,10 @@ test('Appends from a replicated core are indexed', async (t) => {
     replicate(core, remoteCores[i], t)
     await remote.update({ wait: true })
     const range = remote.download({ start: 0, end: remote.length })
-    await range.downloaded()
+    await range.done()
     indexStreams.push(new CoreIndexStream(core, () => new ram()))
   }
+  /** @type {Entry[]} */
   const entries = []
   const stream = new MultiCoreIndexStream(indexStreams, { highWaterMark: 10 })
   stream.on('data', (entry) => entries.push(entry))
@@ -192,8 +200,10 @@ test('Appends from a replicated core are indexed', async (t) => {
 
 test('Maintains index state', async (t) => {
   const cores = await createMultiple(5)
+  /** @type {Array<(name: string) => import('random-access-storage')>} */
   const storages = []
   await generateFixtures(cores, 1000)
+  /** @type {Entry[]} */
   const entries = []
 
   for (const core of cores) {
@@ -213,7 +223,7 @@ test('Maintains index state', async (t) => {
   const stream = new MultiCoreIndexStream(indexStreams)
   stream.on('data', (entry) => {
     entries.push(entry)
-    stream.setIndexed(entry.key.toString('hex'), entry.index)
+    stream.setIndexed(entry.discoveryId, entry.index)
   })
 
   const expectedPromise = generateFixtures(cores, 1000)
