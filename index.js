@@ -116,6 +116,13 @@ class MultiCoreIndexer extends TypedEmitter {
     ])
   }
 
+  /**
+   * Unlink all index files. This should only be called after `close()` has resolved.
+   */
+  async unlink() {
+    await this.#indexStream.unlink()
+  }
+
   /** @param {Entry<T>[]} entries */
   async #handleEntries(entries) {
     this.#emitState()

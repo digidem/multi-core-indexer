@@ -146,6 +146,10 @@ hypercores already in the indexer.
 Stop the indexer and flush index state to storage. This will not close the
 underlying storage - it is up to the consumer to do that.
 
+### indexer.unlink()
+
+Unlink all index files. This should only be called after `close()` has resolved.
+
 ### indexer.on('index-state', onState)
 
 #### onState
