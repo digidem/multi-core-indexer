@@ -329,6 +329,36 @@ test('Entries are re-indexed if index storage reset', async (t) => {
   t.pass('Indexer closed')
 })
 
+test('Entries are re-indexed if index storage unlinked', async (t) => {
+  const cores = await createMultiple(5)
+
+  const createRAM = ram.reusable()
+
+  const indexer1 = new MultiCoreIndexer(cores, {
+    batch: async () => {},
+    storage: createRAM,
+  })
+  const expected = await generateFixtures(cores, 3)
+  await indexer1.idle()
+  await indexer1.close()
+  await indexer1.unlink()
+
+  /** @type {Entry[]} */
+  const entries = []
+  const indexer2 = new MultiCoreIndexer(cores, {
+    batch: async (data) => {
+      entries.push(...data)
+    },
+    storage: createRAM,
+  })
+  await indexer2.idle()
+
+  t.same(sortEntries(entries), sortEntries(expected))
+
+  await indexer2.close()
+  t.pass('Indexer closed')
+})
+
 test('Entries are batched to batchMax when indexing is slower than Hypercore reads', async (t) => {
   const cores = await createMultiple(5)
   await generateFixtures(cores, 500)
