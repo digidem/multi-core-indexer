@@ -1,46 +1,45 @@
-// @ts-check
-
-const { test } = require('tap')
+const test = require('node:test')
+const assert = require('node:assert/strict')
 const ram = require('random-access-memory')
 const Bitfield = require('../../lib/bitfield')
 
-test('bitfield - set and get', async function (t) {
+test('bitfield - set and get', async function () {
   const b = await Bitfield.open(new ram())
 
-  t.notOk(b.get(42))
+  assert.equal(b.get(42), false)
   b.set(42, true)
-  t.ok(b.get(42))
+  assert.ok(b.get(42))
 
   // bigger offsets
-  t.notOk(b.get(42000000))
+  assert.equal(b.get(42000000), false)
   b.set(42000000, true)
-  t.ok(b.get(42000000))
+  assert.ok(b.get(42000000))
 
   b.set(42000000, false)
-  t.notOk(b.get(42000000))
+  assert.equal(b.get(42000000), false)
 
   await b.flush()
 })
 
-test('bitfield - set and get, no storage', async function (t) {
+test('bitfield - set and get, no storage', async function () {
   const b = await new Bitfield()
 
-  t.notOk(b.get(42))
+  assert.equal(b.get(42), false)
   b.set(42, true)
-  t.ok(b.get(42))
+  assert.ok(b.get(42))
 
   // bigger offsets
-  t.notOk(b.get(42000000))
+  assert.equal(b.get(42000000), false)
   b.set(42000000, true)
-  t.ok(b.get(42000000))
+  assert.ok(b.get(42000000))
 
   b.set(42000000, false)
-  t.notOk(b.get(42000000))
+  assert.equal(b.get(42000000), false)
 
   await b.flush()
 })
 
-test('bitfield - random set and gets', async function (t) {
+test('bitfield - random set and gets', async function () {
   const b = await Bitfield.open(new ram())
   const set = new Set()
 
@@ -55,7 +54,7 @@ test('bitfield - random set and gets', async function (t) {
     const expected = set.has(idx)
     const val = b.get(idx)
     if (val !== expected) {
-      t.fail('expected ' + expected + ' but got ' + val + ' at ' + idx)
+      assert.fail('expected ' + expected + ' but got ' + val + ' at ' + idx)
       return
     }
   }
@@ -63,15 +62,13 @@ test('bitfield - random set and gets', async function (t) {
   for (const idx of set) {
     const val = b.get(idx)
     if (val !== true) {
-      t.fail('expected true but got ' + val + ' at ' + idx)
+      assert.fail('expected true but got ' + val + ' at ' + idx)
       return
     }
   }
-
-  t.pass('all random set and gets pass')
 })
 
-test('bitfield - reload', async function (t) {
+test('bitfield - reload', async function () {
   const s = new ram()
 
   {
@@ -84,8 +81,8 @@ test('bitfield - reload', async function (t) {
 
   {
     const b = await Bitfield.open(s)
-    t.ok(b.get(142))
-    t.ok(b.get(40000))
-    t.ok(b.get(1424242424))
+    assert.ok(b.get(142))
+    assert.ok(b.get(40000))
+    assert.ok(b.get(1424242424))
   }
 })

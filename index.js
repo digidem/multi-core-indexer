@@ -126,7 +126,7 @@ class MultiCoreIndexer extends TypedEmitter {
   /** @param {Entry<T>[]} entries */
   async #handleEntries(entries) {
     this.#emitState()
-    /* istanbul ignore if - not sure this is necessary, but better safe than sorry */
+    /* c8 ignore next - not sure this is necessary, but better safe than sorry */
     if (!entries.length) return
     await this.#batch(entries)
     for (const { key, index } of entries) {

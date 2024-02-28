@@ -5,10 +5,9 @@
   "main": "index.js",
   "types": "types/index.d.ts",
   "scripts": {
-    "test": "run-p lint type tap",
+    "test": "run-p lint type borp",
     "lint": "eslint .",
-    "tap": "tap",
-    "posttest": "mkdir -p coverage && tap --coverage-report=text-lcov > ./coverage/lcov.info",
+    "borp": "borp --coverage",
     "type": "tsc",
     "prepare": "husky install",
     "prepack": "tsc"
@@ -29,8 +28,7 @@
     "@digidem/types": "^1.0.1",
     "@types/nanobench": "^3.0.0",
     "@types/sodium-native": "^2.3.5",
-    "@types/tap": "^15.0.8",
-    "brittle": "^3.3.2",
+    "borp": "^0.9.1",
     "eslint": "^8.44.0",
     "husky": "^8.0.3",
     "hypercore": "^10.17.0",
@@ -43,7 +41,6 @@
     "pretty-quick": "^3.1.3",
     "random-access-memory": "^6.2.0",
     "sodium-native": "^4.0.4",
-    "tap": "^16.3.7",
     "tempy": "^3.0.0",
     "typescript": "^5.1.6"
   },

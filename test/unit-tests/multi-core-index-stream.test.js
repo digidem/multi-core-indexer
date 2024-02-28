@@ -1,7 +1,8 @@
 // @ts-check
 const { CoreIndexStream } = require('../../lib/core-index-stream')
 const { MultiCoreIndexStream } = require('../../lib/multi-core-index-stream')
-const { test } = require('tap')
+const test = require('node:test')
+const assert = require('node:assert/strict')
 const { once } = require('events')
 const ram = require('random-access-memory')
 const { Writable } = require('streamx')
@@ -14,7 +15,7 @@ const {
   sortEntries,
 } = require('../helpers')
 
-test('Indexes all items already in a core', async (t) => {
+test('Indexes all items already in a core', async () => {
   const cores = await createMultiple(5)
   const expected = await generateFixtures(cores, 1000)
   const indexStreams = cores.map(
@@ -30,17 +31,16 @@ test('Indexes all items already in a core', async (t) => {
   })
   stream.pipe(ws)
   await throttledDrain(stream)
-  t.same(sortEntries(entries), sortEntries(expected))
-  t.not(entries.length, 0, 'has entries')
+  assert.deepEqual(sortEntries(entries), sortEntries(expected))
+  assert.notEqual(entries.length, 0, 'has entries')
   stream.destroy()
   // Need the noop catch here because once() will reject if the source emits an
   // error event while waiting, and the destroy() bubbles up an error in the
   // writestream
   await once(ws, 'close').catch(() => {})
-  t.pass('Stream destroyed and closed')
 })
 
-test('Adding index streams after initialization', async (t) => {
+test('Adding index streams after initialization', async () => {
   const cores = await createMultiple(3)
   const expected = await generateFixtures(cores, 100)
   const indexStreams = cores.map(
@@ -59,17 +59,16 @@ test('Adding index streams after initialization', async (t) => {
   })
   stream.pipe(ws)
   await throttledDrain(stream)
-  t.same(sortEntries(entries), sortEntries(expected))
-  t.not(entries.length, 0, 'has entries')
+  assert.deepEqual(sortEntries(entries), sortEntries(expected))
+  assert.notEqual(entries.length, 0, 'has entries')
   stream.destroy()
   // Need the noop catch here because once() will reject if the source emits an
   // error event while waiting, and the destroy() bubbles up an error in the
   // writestream
   await once(ws, 'close').catch(() => {})
-  t.pass('Stream destroyed and closed')
 })
 
-test('.remaining is as expected', async (t) => {
+test('.remaining is as expected', async () => {
   const coreCount = 5
   const blockCount = 100
   const cores = await createMultiple(coreCount)
@@ -85,7 +84,7 @@ test('.remaining is as expected', async (t) => {
       for (const { key, index } of data) {
         stream.setIndexed(key.toString('hex'), index)
       }
-      t.equal(
+      assert.equal(
         stream.remaining,
         coreCount * blockCount - entries.length,
         'got expected .remaining ' + (coreCount * blockCount - entries.length)
@@ -95,17 +94,16 @@ test('.remaining is as expected', async (t) => {
   })
   stream.pipe(ws)
   await throttledDrain(stream)
-  t.same(sortEntries(entries), sortEntries(expected))
-  t.not(entries.length, 0, 'has entries')
+  assert.deepEqual(sortEntries(entries), sortEntries(expected))
+  assert.notEqual(entries.length, 0, 'has entries')
   stream.destroy()
   // Need the noop catch here because once() will reject if the source emits an
   // error event while waiting, and the destroy() bubbles up an error in the
   // writestream
   await once(ws, 'close').catch(() => {})
-  t.pass('Stream destroyed and closed')
 })
 
-test('Indexes items appended after initial index', async (t) => {
+test('Indexes items appended after initial index', async () => {
   const cores = await createMultiple(5)
   const indexStreams = cores.map(
     (core) => new CoreIndexStream(core, () => new ram())
@@ -114,16 +112,15 @@ test('Indexes items appended after initial index', async (t) => {
   const stream = new MultiCoreIndexStream(indexStreams, { highWaterMark: 10 })
   stream.on('data', (entry) => entries.push(entry))
   await throttledDrain(stream)
-  t.same(entries, [], 'no entries before append')
+  assert.deepEqual(entries, [], 'no entries before append')
   const expected = await generateFixtures(cores, 100)
   await throttledDrain(stream)
-  t.same(sortEntries(entries), sortEntries(expected))
+  assert.deepEqual(sortEntries(entries), sortEntries(expected))
   stream.destroy()
   await once(stream, 'close')
-  t.pass('Stream destroyed and closed')
 })
 
-test('index sparse hypercores', async (t) => {
+test('index sparse hypercores', async () => {
   const coreCount = 5
   const localCores = await createMultiple(coreCount)
   const expected = []
@@ -135,7 +132,7 @@ test('index sparse hypercores', async (t) => {
     expected.push.apply(expected, fixture.slice(5, 20))
     expected2.push.apply(expected2, fixture.slice(50, 60))
     remoteCores[i] = await create(core.key)
-    replicate(core, remoteCores[i], t)
+    replicate(core, remoteCores[i])
   }
 
   for (const core of remoteCores) {
@@ -148,7 +145,7 @@ test('index sparse hypercores', async (t) => {
   stream.on('data', (entry) => entries.push(entry))
   await throttledDrain(stream)
 
-  t.same(sortEntries(entries), sortEntries(expected))
+  assert.deepEqual(sortEntries(entries), sortEntries(expected))
 
   await Promise.all([
     throttledDrain(stream),
@@ -157,10 +154,13 @@ test('index sparse hypercores', async (t) => {
     ),
   ])
 
-  t.same(sortEntries(entries), sortEntries([...expected, ...expected2]))
+  assert.deepEqual(
+    sortEntries(entries),
+    sortEntries([...expected, ...expected2])
+  )
 })
 
-test('Appends from a replicated core are indexed', async (t) => {
+test('Appends from a replicated core are indexed', async () => {
   const coreCount = 5
   const localCores = await createMultiple(coreCount)
   const expected1 = await generateFixtures(localCores, 50)
@@ -168,7 +168,7 @@ test('Appends from a replicated core are indexed', async (t) => {
   const remoteCores = Array(coreCount)
   for (const [i, core] of localCores.entries()) {
     const remote = (remoteCores[i] = await create(core.key))
-    replicate(core, remoteCores[i], t)
+    replicate(core, remoteCores[i])
     await remote.update({ wait: true })
     const range = remote.download({ start: 0, end: remote.length })
     await range.downloaded()
@@ -179,7 +179,7 @@ test('Appends from a replicated core are indexed', async (t) => {
   stream.on('data', (entry) => entries.push(entry))
   await throttledDrain(stream)
 
-  t.same(sortEntries(entries), sortEntries(expected1))
+  assert.deepEqual(sortEntries(entries), sortEntries(expected1))
 
   const expected2 = await generateFixtures(localCores, 50)
   for (const remote of remoteCores) {
@@ -187,10 +187,13 @@ test('Appends from a replicated core are indexed', async (t) => {
   }
   await throttledDrain(stream)
 
-  t.same(sortEntries(entries), sortEntries([...expected1, ...expected2]))
+  assert.deepEqual(
+    sortEntries(entries),
+    sortEntries([...expected1, ...expected2])
+  )
 })
 
-test('Maintains index state', async (t) => {
+test('Maintains index state', async () => {
   const cores = await createMultiple(5)
   const storages = []
   await generateFixtures(cores, 1000)
@@ -219,5 +222,5 @@ test('Maintains index state', async (t) => {
   const expectedPromise = generateFixtures(cores, 1000)
   await throttledDrain(stream)
   const expected = await expectedPromise
-  t.same(sortEntries(entries), sortEntries(expected))
+  assert.deepEqual(sortEntries(entries), sortEntries(expected))
 })
