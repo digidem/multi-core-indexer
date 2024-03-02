@@ -7,10 +7,11 @@
   "scripts": {
     "test": "run-p lint type borp",
     "lint": "eslint .",
-    "borp": "borp --coverage",
+    "borp": "c8 borp",
     "type": "tsc",
     "prepare": "husky install",
-    "prepack": "tsc"
+    "prepack": "tsc",
+    "posttest": "c8 report --reporter=text-lcov > ./coverage/lcov.info"
   },
   "keywords": [],
   "author": "Digital Democracy",
@@ -29,6 +30,7 @@
     "@types/nanobench": "^3.0.0",
     "@types/sodium-native": "^2.3.5",
     "borp": "^0.9.1",
+    "c8": "^9.1.0",
     "eslint": "^8.44.0",
     "husky": "^8.0.3",
     "hypercore": "^10.17.0",
