@@ -31,6 +31,18 @@ test('destroy before open', async () => {
   assert.equal(storageCreated, false, 'storage never created')
 })
 
+test('unlink before open', async () => {
+  let storageCreated = false
+  function createStorage() {
+    storageCreated = true
+    return new ram()
+  }
+  const core = new Hypercore(() => new ram())
+  const stream = new CoreIndexStream(core, createStorage)
+  await stream.unlink()
+  assert.equal(storageCreated, true, 'storage was created')
+})
+
 test('Indexes all items already in a core', async () => {
   const a = await create()
   const blocks = generateFixture(0, 10)
