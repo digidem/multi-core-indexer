@@ -25,17 +25,16 @@ module.exports = {
  *
  * @param {Hypercore} a
  * @param {Hypercore} b
- * @param {Tap.Test} t
  * @returns
  */
-function replicate(a, b, t) {
+function replicate(a, b) {
   const s1 = a.replicate(true, { keepAlive: false })
   const s2 = b.replicate(false, { keepAlive: false })
   s1.on('error', (err) =>
-    t.comment(`replication stream error (initiator): ${err}`)
+    console.log(`replication stream error (initiator): ${err}`)
   )
   s2.on('error', (err) =>
-    t.comment(`replication stream error (responder): ${err}`)
+    console.log(`replication stream error (responder): ${err}`)
   )
   s1.pipe(s2).pipe(s1)
   return [s1, s2]

@@ -1,6 +1,7 @@
 // @ts-check
 const MultiCoreIndexer = require('../')
-const { test } = require('tap')
+const test = require('node:test')
+const assert = require('node:assert/strict')
 const ram = require('random-access-memory')
 const {
   create,
@@ -14,7 +15,7 @@ const Hypercore = require('hypercore')
 
 /** @typedef {import('../lib/types').Entry<'binary'>} Entry */
 
-test('Indexes all items already in a core', async (t) => {
+test('Indexes all items already in a core', async () => {
   const cores = await createMultiple(5)
   const expected = await generateFixtures(cores, 100)
   /** @type {Entry[]} */
@@ -34,15 +35,15 @@ test('Indexes all items already in a core', async (t) => {
     storage: createStorage,
   })
   await indexer.idle()
-  t.same(sortEntries(entries), sortEntries(expected))
+  assert.deepEqual(sortEntries(entries), sortEntries(expected))
   await indexer.close()
-  t.ok(
+  assert.ok(
     storages.every((storage) => storage.closed),
     'all storages are closed'
   )
 })
 
-test('Indexes all items already in a core (some empty cores)', async (t) => {
+test('Indexes all items already in a core (some empty cores)', async () => {
   const cores = await createMultiple(5)
   const expected = await generateFixtures(cores.slice(0, 3), 100)
   /** @type {Entry[]} */
@@ -56,11 +57,11 @@ test('Indexes all items already in a core (some empty cores)', async (t) => {
     storage: () => new ram(),
   })
   await indexer.idle()
-  t.same(sortEntries(entries), sortEntries(expected))
+  assert.deepEqual(sortEntries(entries), sortEntries(expected))
   await indexer.close()
 })
 
-test('Multiple .idle() awaits', async (t) => {
+test('Multiple .idle() awaits', async () => {
   const cores = await createMultiple(5)
   const expected = await generateFixtures(cores, 100)
   /** @type {Entry[]} */
@@ -73,11 +74,11 @@ test('Multiple .idle() awaits', async (t) => {
     storage: () => new ram(),
   })
   await Promise.all([indexer.idle(), indexer.idle(), indexer.idle()])
-  t.same(sortEntries(entries), sortEntries(expected))
+  assert.deepEqual(sortEntries(entries), sortEntries(expected))
   await indexer.close()
 })
 
-test('Indexes items appended after initial index', async (t) => {
+test('Indexes items appended after initial index', async () => {
   const cores = await createMultiple(5)
   /** @type {Entry[]} */
   const entries = []
@@ -90,29 +91,25 @@ test('Indexes items appended after initial index', async (t) => {
   })
   const expected = await generateFixtures(cores, 100)
   await indexer.idle()
-  t.same(sortEntries(entries), sortEntries(expected))
+  assert.deepEqual(sortEntries(entries), sortEntries(expected))
   await indexer.close()
-  t.pass('Indexer closed')
 })
 
-test('No cores, starts idle, indexing after core added', async (t) => {
+test('No cores, starts idle, indexing after core added', async () => {
   const indexer = new MultiCoreIndexer([], {
     batch: async () => {},
     storage: () => new ram(),
   })
-  t.equal(indexer.state.current, 'idle', 'starts in idle state')
+  assert.equal(indexer.state.current, 'idle', 'starts in idle state')
   await indexer.idle()
-  t.pass('indexer.idle() still resolves')
   const core = await create()
   indexer.addCore(core)
-  t.equal(indexer.state.current, 'indexing', 'indexing after core added')
+  assert.equal(indexer.state.current, 'indexing', 'indexing after core added')
   await indexer.idle()
-  t.pass('indexer.idle() still resolves')
   await indexer.close()
-  t.pass('Indexer closed')
 })
 
-test('Calling idle() when already idle still resolves', async (t) => {
+test('Calling idle() when already idle still resolves', async () => {
   const cores = await createMultiple(5)
   const expected = await generateFixtures(cores, 10)
   /** @type {Entry[]} */
@@ -124,13 +121,12 @@ test('Calling idle() when already idle still resolves', async (t) => {
     storage: () => new ram(),
   })
   await indexer.idle()
-  t.same(sortEntries(entries), sortEntries(expected))
+  assert.deepEqual(sortEntries(entries), sortEntries(expected))
   await indexer.idle()
-  t.same(sortEntries(entries), sortEntries(expected))
+  assert.deepEqual(sortEntries(entries), sortEntries(expected))
   await indexer.close()
-  t.pass('indexer closed')
 })
-test('Indexes cores added with addCore method', async (t) => {
+test('Indexes cores added with addCore method', async () => {
   const cores = await createMultiple(5)
   /** @type {Entry[]} */
   const entries = []
@@ -143,19 +139,21 @@ test('Indexes cores added with addCore method', async (t) => {
   })
   const initialExpected = await generateFixtures(cores, 100)
   await indexer.idle()
-  t.same(sortEntries(entries), sortEntries(initialExpected))
+  assert.deepEqual(sortEntries(entries), sortEntries(initialExpected))
   const newCores = await createMultiple(5)
   for (const core of newCores) {
     indexer.addCore(core)
   }
   const expected = await generateFixtures([...cores, ...newCores], 100)
   await indexer.idle()
-  t.same(sortEntries(entries), sortEntries([...initialExpected, ...expected]))
+  assert.deepEqual(
+    sortEntries(entries),
+    sortEntries([...initialExpected, ...expected])
+  )
   await indexer.close()
-  t.pass('Indexer closed')
 })
 
-test('index sparse hypercores', async (t) => {
+test('index sparse hypercores', async () => {
   const coreCount = 5
   const localCores = await createMultiple(coreCount)
   /** @type {Entry[]} */
@@ -168,7 +166,7 @@ test('index sparse hypercores', async (t) => {
     expected.push.apply(expected, fixture.slice(5, 20))
     expected2.push.apply(expected2, fixture.slice(50, 60))
     remoteCores[i] = await create(core.key)
-    replicate(core, remoteCores[i], t)
+    replicate(core, remoteCores[i])
   }
 
   for (const core of remoteCores) {
@@ -184,19 +182,21 @@ test('index sparse hypercores', async (t) => {
   })
   await indexer.idle()
 
-  t.same(sortEntries(entries), sortEntries(expected))
+  assert.deepEqual(sortEntries(entries), sortEntries(expected))
 
   for (const core of remoteCores) {
     await core.download({ start: 50, end: 60 }).downloaded()
   }
   await indexer.idle()
 
-  t.same(sortEntries(entries), sortEntries([...expected, ...expected2]))
+  assert.deepEqual(
+    sortEntries(entries),
+    sortEntries([...expected, ...expected2])
+  )
   await indexer.close()
-  t.pass('Indexer closed')
 })
 
-test('Appends from a replicated core are indexed', async (t) => {
+test('Appends from a replicated core are indexed', async () => {
   const coreCount = 5
   const localCores = await createMultiple(coreCount)
   const expected1 = await generateFixtures(localCores, 50)
@@ -204,7 +204,7 @@ test('Appends from a replicated core are indexed', async (t) => {
   const remoteCores = Array(coreCount)
   for (const [i, core] of localCores.entries()) {
     const remote = (remoteCores[i] = await create(core.key))
-    replicate(core, remoteCores[i], t)
+    replicate(core, remoteCores[i])
     await remote.update({ wait: true })
     await remote.download({ start: 0, end: remote.length }).downloaded()
   }
@@ -217,7 +217,7 @@ test('Appends from a replicated core are indexed', async (t) => {
     storage: () => new ram(),
   })
   await indexer.idle()
-  t.same(sortEntries(entries), sortEntries(expected1))
+  assert.deepEqual(sortEntries(entries), sortEntries(expected1))
 
   const expected2 = await generateFixtures(localCores, 50)
   for (const [i, remote] of remoteCores.entries()) {
@@ -225,12 +225,14 @@ test('Appends from a replicated core are indexed', async (t) => {
   }
   await indexer.idle()
 
-  t.same(sortEntries(entries), sortEntries([...expected1, ...expected2]))
+  assert.deepEqual(
+    sortEntries(entries),
+    sortEntries([...expected1, ...expected2])
+  )
   await indexer.close()
-  t.pass('Indexer closed')
 })
 
-test('Maintains index state (memory storage)', async (t) => {
+test('Maintains index state (memory storage)', async () => {
   const cores = await createMultiple(5)
   const expected1 = await generateFixtures(cores, 1000)
   const createRAM = ram.reusable()
@@ -244,9 +246,8 @@ test('Maintains index state (memory storage)', async (t) => {
     storage: createRAM,
   })
   await indexer1.idle()
-  t.same(sortEntries(entries1), sortEntries(expected1))
+  assert.deepEqual(sortEntries(entries1), sortEntries(expected1))
   await indexer1.close()
-  t.pass('Indexer closed')
 
   const expected2 = await generateFixtures(cores, 1000)
   /** @type {Entry[]} */
@@ -258,12 +259,11 @@ test('Maintains index state (memory storage)', async (t) => {
     storage: createRAM,
   })
   await indexer2.idle()
-  t.same(sortEntries(entries2), sortEntries(expected2))
+  assert.deepEqual(sortEntries(entries2), sortEntries(expected2))
   await indexer2.close()
-  t.pass('Indexer closed')
 })
 
-test('Maintains index state (file storage)', async (t) => {
+test('Maintains index state (file storage)', async () => {
   const { temporaryDirectoryTask } = await import('tempy')
   await temporaryDirectoryTask(async (dir) => {
     const cores = await createMultiple(5)
@@ -278,9 +278,8 @@ test('Maintains index state (file storage)', async (t) => {
       storage: dir,
     })
     await indexer1.idle()
-    t.same(sortEntries(entries1), sortEntries(expected1))
+    assert.deepEqual(sortEntries(entries1), sortEntries(expected1))
     await indexer1.close()
-    t.pass('Indexer closed')
 
     const expected2 = await generateFixtures(cores, 1000)
     /** @type {Entry[]} */
@@ -292,13 +291,12 @@ test('Maintains index state (file storage)', async (t) => {
       storage: dir,
     })
     await indexer2.idle()
-    t.same(sortEntries(entries2), sortEntries(expected2))
+    assert.deepEqual(sortEntries(entries2), sortEntries(expected2))
     await indexer2.close()
-    t.pass('Indexer closed')
   })
 })
 
-test('Entries are re-indexed if index storage reset', async (t) => {
+test('Entries are re-indexed if index storage reset', async () => {
   const cores = await createMultiple(5)
   const expected = await generateFixtures(cores, 1000)
 
@@ -311,9 +309,8 @@ test('Entries are re-indexed if index storage reset', async (t) => {
     storage: () => new ram(),
   })
   await indexer1.idle()
-  t.same(sortEntries(entries1), sortEntries(expected))
+  assert.deepEqual(sortEntries(entries1), sortEntries(expected))
   await indexer1.close()
-  t.pass('Indexer closed')
 
   /** @type {Entry[]} */
   const entries2 = []
@@ -324,12 +321,11 @@ test('Entries are re-indexed if index storage reset', async (t) => {
     storage: () => new ram(),
   })
   await indexer2.idle()
-  t.same(sortEntries(entries2), sortEntries(expected))
+  assert.deepEqual(sortEntries(entries2), sortEntries(expected))
   await indexer2.close()
-  t.pass('Indexer closed')
 })
 
-test('Entries are re-indexed if index storage unlinked', async (t) => {
+test('Entries are re-indexed if index storage unlinked', async () => {
   const cores = await createMultiple(5)
 
   const createRAM = ram.reusable()
@@ -353,13 +349,12 @@ test('Entries are re-indexed if index storage unlinked', async (t) => {
   })
   await indexer2.idle()
 
-  t.same(sortEntries(entries), sortEntries(expected))
+  assert.deepEqual(sortEntries(entries), sortEntries(expected))
 
   await indexer2.close()
-  t.pass('Indexer closed')
 })
 
-test('Entries are batched to batchMax when indexing is slower than Hypercore reads', async (t) => {
+test('Entries are batched to batchMax when indexing is slower than Hypercore reads', async () => {
   const cores = await createMultiple(5)
   await generateFixtures(cores, 500)
 
@@ -375,7 +370,7 @@ test('Entries are batched to batchMax when indexing is slower than Hypercore rea
       storage: () => new ram(),
     })
     await indexer.idle()
-    t.ok(
+    assert.ok(
       batchSizes.filter((size) => size < batchSize).length <= 2,
       `Most batches are ${batchSize}`
     )
@@ -383,7 +378,7 @@ test('Entries are batched to batchMax when indexing is slower than Hypercore rea
   }
 })
 
-test('Batches smaller than maxBatch when indexing is faster than hypercore reads', async (t) => {
+test('Batches smaller than maxBatch when indexing is faster than hypercore reads', async () => {
   const cores = await createMultiple(5)
   await generateFixtures(cores, 500)
   const batchSize = 1000
@@ -397,14 +392,14 @@ test('Batches smaller than maxBatch when indexing is faster than hypercore reads
     storage: () => new ram(),
   })
   await indexer.idle()
-  t.ok(
+  assert.ok(
     batchSizes.every((size) => size < batchSize),
     `All batches are smaller than maxBatch`
   )
   await indexer.close()
 })
 
-test('sync state / progress', async (t) => {
+test('sync state / progress', async () => {
   const expectedVariation = 0.2
   const numberOfCores = 5
   const entriesPerCore = 1000
@@ -424,16 +419,16 @@ test('sync state / progress', async (t) => {
   await indexer.idle()
   const actualRate =
     (numberOfCores * entriesPerCore * 1000) / (Date.now() - start)
-  t.ok(stateEvents.length > 10, 'At least 10 index-state events')
-  t.same(stateEvents[0], {
+  assert.ok(stateEvents.length > 10, 'At least 10 index-state events')
+  assert.deepEqual(stateEvents[0], {
     entriesPerSecond: 0,
     remaining: numberOfCores * entriesPerCore,
     current: 'indexing',
   })
   // Ends with idle and 0 remaining
-  t.equal(stateEvents[stateEvents.length - 1].current, 'idle')
-  t.equal(stateEvents[stateEvents.length - 1].remaining, 0)
-  t.ok(
+  assert.equal(stateEvents[stateEvents.length - 1].current, 'idle')
+  assert.equal(stateEvents[stateEvents.length - 1].remaining, 0)
+  assert.ok(
     // Ignore first two events, as they are not representative of the actual rate
     stateEvents.slice(2).every((state) => {
       return (
@@ -447,10 +442,9 @@ test('sync state / progress', async (t) => {
   )
 
   await indexer.close()
-  t.pass('Indexer closed')
 })
 
-test('state getter', async (t) => {
+test('state getter', async () => {
   const cores = await createMultiple(2)
   const entries = []
   const indexer = new MultiCoreIndexer(cores, {
@@ -459,40 +453,38 @@ test('state getter', async (t) => {
     },
     storage: () => new ram(),
   })
-  t.same(indexer.state.current, 'indexing')
+  assert.deepEqual(indexer.state.current, 'indexing')
   await indexer.idle()
   await generateFixtures(cores, 100)
-  t.same(indexer.state.current, 'indexing')
+  assert.deepEqual(indexer.state.current, 'indexing')
   await indexer.idle()
-  t.same(indexer.state.current, 'idle')
-  t.same(entries.length, 200)
+  assert.deepEqual(indexer.state.current, 'idle')
+  assert.deepEqual(entries.length, 200)
   await indexer.close()
-  t.pass('Indexer closed')
 })
 
-test('empty cores, no indexing event before idle', async (t) => {
+test('empty cores, no indexing event before idle', async () => {
   const cores = await createMultiple(2)
   const indexer = new MultiCoreIndexer(cores, {
     batch: async () => {},
     storage: () => new ram(),
   })
   indexer.on('index-state', (state) => {
-    if (state.current === 'indexing') t.fail()
+    if (state.current === 'indexing') assert.fail()
   })
-  indexer.on('indexing', t.fail)
-  t.same(indexer.state.current, 'indexing')
+  indexer.on('indexing', assert.fail)
+  assert.deepEqual(indexer.state.current, 'indexing')
   await indexer.close()
-  t.pass('Indexer closed')
 })
 
-test('state.remaining does not update until after batch function resolves', async (t) => {
+test('state.remaining does not update until after batch function resolves', async () => {
   const cores = await createMultiple(1)
   const entries = []
   await generateFixtures(cores, 1)
   const indexer = new MultiCoreIndexer(cores, {
     batch: async (data) => {
       const state = indexer.state
-      t.same(
+      assert.deepEqual(
         state.remaining,
         1,
         'remaining should not decrease until after batch() resolves'
@@ -502,13 +494,12 @@ test('state.remaining does not update until after batch function resolves', asyn
     storage: () => new ram(),
   })
   await indexer.idle()
-  t.same(indexer.state.current, 'idle')
-  t.same(entries.length, 1)
+  assert.deepEqual(indexer.state.current, 'idle')
+  assert.deepEqual(entries.length, 1)
   await indexer.close()
-  t.pass('Indexer closed')
 })
 
-test('Closing before batch complete should resume on next start', async (t) => {
+test('Closing before batch complete should resume on next start', async () => {
   const cores = await createMultiple(5)
   const expected = await generateFixtures(cores, 1000)
   const createRAM = ram.reusable()
@@ -533,11 +524,10 @@ test('Closing before batch complete should resume on next start', async (t) => {
     })
   )
   await indexer1.close()
-  t.ok(
+  assert.ok(
     indexer1.state.remaining <= 2500,
     'Stopped with half of the entries indexed'
   )
-  t.pass('Indexer closed')
 
   const indexer2 = new MultiCoreIndexer(cores, {
     batch: async (data) => {
@@ -546,14 +536,13 @@ test('Closing before batch complete should resume on next start', async (t) => {
     storage: createRAM,
   })
   await indexer2.idle()
-  t.equal(entries.length, expected.length)
+  assert.equal(entries.length, expected.length)
   // t.same(sortEntries(entries), sortEntries(expected))
   await indexer2.close()
-  t.pass('Indexer closed')
 })
 
 // This checks that storage names do not change between versions, which would be a breaking change
-test('Consistent storage folders', async (t) => {
+test('Consistent storage folders', async () => {
   const storageNames = []
   const cores = []
   for (const keyPair of testKeypairs.slice(0, 5)) {
@@ -571,10 +560,10 @@ test('Consistent storage folders', async (t) => {
     indexer.addCore(await create({ keyPair }))
   }
   await indexer.idle()
-  t.same(storageNames.sort(), expectedStorageNames)
+  assert.deepEqual(storageNames.sort(), expectedStorageNames)
 })
 
-test('Works with non-ready cores', async (t) => {
+test('Works with non-ready cores', async () => {
   /** @type {Hypercore[]} */
   const cores = []
   for (let i = 0; i < 5; i++) {
@@ -584,13 +573,12 @@ test('Works with non-ready cores', async (t) => {
     batch: async () => {},
     storage: () => new ram(),
   })
-  t.equal(indexer.state.current, 'indexing')
+  assert.equal(indexer.state.current, 'indexing')
   await indexer.idle()
-  t.pass('indexer.idle() resolves')
   await indexer.close()
 })
 
-test('Indexes all items already in a core - cores not ready', async (t) => {
+test('Indexes all items already in a core - cores not ready', async () => {
   /** @type {Hypercore[]} */
   const cores = []
   /** @type {Array<ReturnType<(typeof ram)['reusable']>>} */
@@ -614,6 +602,6 @@ test('Indexes all items already in a core - cores not ready', async (t) => {
     storage: () => new ram(),
   })
   await indexer.idle()
-  t.same(sortEntries(entries), sortEntries(expected))
+  assert.deepEqual(sortEntries(entries), sortEntries(expected))
   await indexer.close()
 })
