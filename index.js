@@ -5,7 +5,7 @@ const { once } = require('events')
 const raf = require('random-access-file')
 const { CoreIndexStream } = require('./lib/core-index-stream')
 const { MultiCoreIndexStream } = require('./lib/multi-core-index-stream')
-const { pDefer } = require('./lib/utils.js')
+const { pDefer, ExhaustivenessError } = require('./lib/utils.js')
 
 const DEFAULT_BATCH_SIZE = 100
 // The indexing rate (in entries per second) is calculated as an exponential
@@ -86,18 +86,27 @@ class MultiCoreIndexer extends TypedEmitter {
   }
 
   /**
-   * Add a core to be indexed
+   * Add a hypercore to the indexer. Must have the same value encoding as other
+   * hypercores already in the indexer.
+   *
+   * Rejects if called after the indexer is closed.
+   *
    * @param {import('hypercore')<T, any>} core
    */
   addCore(core) {
+    this.#assertOpen('Cannot add core after closing')
     const coreIndexStream = new CoreIndexStream(core, this.#createStorage)
     this.#indexStream.addStream(coreIndexStream)
   }
 
   /**
-   * Resolves when indexing state is 'idle'
+   * Resolves when indexing state is 'idle'.
+   *
+   * Resolves if the indexer is closed before this resolves. Rejects if called
+   * after the indexer is closed.
    */
   async idle() {
+    this.#assertOpen('Cannot await idle after closing')
     if (this.#getState().current === 'idle') return
     if (!this.#pendingIdle) {
       this.#pendingIdle = pDefer()
@@ -105,7 +114,15 @@ class MultiCoreIndexer extends TypedEmitter {
     return this.#pendingIdle.promise
   }
 
+  /**
+   * Stop the indexer and flush index state to storage. This will not close the
+   * underlying storage - it is up to the consumer to do that.
+   *
+   * Rejects if called more than once.
+   */
   async close() {
+    this.#assertOpen('Cannot double-close')
+    this.#state = 'closing'
     this.#indexStream.off('indexing', this.#emitStateBound)
     this.#indexStream.off('drained', this.#emitStateBound)
     this.#writeStream.destroy()
@@ -114,13 +131,42 @@ class MultiCoreIndexer extends TypedEmitter {
       once(this.#indexStream, 'close'),
       once(this.#writeStream, 'close'),
     ])
+    this.#pendingIdle?.resolve()
+    this.#state = 'closed'
   }
 
   /**
-   * Unlink all index files. This should only be called after `close()` has resolved.
+   * Unlink all index files.
+   *
+   * This should only be called after `close()` has resolved, and rejects if not.
    */
   async unlink() {
-    await this.#indexStream.unlink()
+    switch (this.#state) {
+      case 'idle':
+      case 'indexing':
+      case 'closing':
+        throw new Error('Cannot unlink until fully closed')
+      case 'closed':
+        return this.#indexStream.unlink()
+      /* c8 ignore next 2 */
+      default:
+        throw new ExhaustivenessError(this.#state)
+    }
+  }
+
+  /** @param {string} message */
+  #assertOpen(message) {
+    switch (this.#state) {
+      case 'idle':
+      case 'indexing':
+        return
+      case 'closing':
+      case 'closed':
+        throw new Error(message)
+      /* c8 ignore next 2 */
+      default:
+        throw new ExhaustivenessError(this.#state)
+    }
   }
 
   /** @param {Entry<T>[]} entries */
@@ -146,28 +192,55 @@ class MultiCoreIndexer extends TypedEmitter {
 
   #emitState() {
     const state = this.#getState()
-    if (state.current !== this.#prevEmittedState?.current) {
-      this.emit(state.current)
+    switch (state.current) {
+      case 'idle':
+      case 'indexing':
+        if (state.current !== this.#prevEmittedState?.current) {
+          this.emit(state.current)
+        }
+        // Only emit if remaining has changed (which infers that state.current has changed)
+        if (state.remaining !== this.#prevEmittedState?.remaining) {
+          this.emit('index-state', state)
+        }
+        this.#prevEmittedState = state
+        break
+      /* c8 ignore next 3 */
+      case 'closing':
+      case 'closed':
+        break
+      /* c8 ignore next 2 */
+      default:
+        throw new ExhaustivenessError(state.current)
     }
-    // Only emit if remaining has changed (which infers that state.current has changed)
-    if (state.remaining !== this.#prevEmittedState?.remaining) {
-      this.emit('index-state', state)
-    }
-    this.#prevEmittedState = state
   }
 
+  /** @returns {IndexState} */
   #getState() {
     const remaining = this.#indexStream.remaining
     const drained = this.#indexStream.drained
     const prevState = this.#state
-    this.#state = remaining === 0 && drained ? 'idle' : 'indexing'
-    if (this.#state === 'idle' && this.#pendingIdle) {
-      this.#pendingIdle.resolve()
-      this.#pendingIdle = undefined
+
+    switch (this.#state) {
+      case 'idle':
+      case 'indexing': {
+        this.#state = remaining === 0 && drained ? 'idle' : 'indexing'
+        if (this.#state === 'idle' && this.#pendingIdle) {
+          this.#pendingIdle.resolve()
+          this.#pendingIdle = undefined
+        }
+        if (this.#state === 'indexing' && prevState === 'idle') {
+          this.#rateMeasurementStart = Date.now()
+        }
+        break
+      }
+      case 'closing':
+      case 'closed':
+        break
+      /* c8 ignore next 2 */
+      default:
+        throw new ExhaustivenessError(this.#state)
     }
-    if (this.#state === 'indexing' && prevState === 'idle') {
-      this.#rateMeasurementStart = Date.now()
-    }
+
     return {
       current: this.#state,
       remaining,

@@ -125,7 +125,7 @@ be the byte length of all the blocks in the batch. If the value encoding is
 
 ### indexer.state
 
-Type: `IndexState: { current: 'idle' | 'indexing', remaining: number, entriesPerSecond: number }`
+Type: `IndexState: { current: 'idle' | 'indexing' | 'closing' | 'closed', remaining: number, entriesPerSecond: number }`
 
 A getter that returns the current `IndexState`, the same as the value emitted by the `index-state` event. This getter is useful for checking the state of the indexer before it has emitted any events.
 
@@ -139,6 +139,15 @@ Type: `Hypercore`
 Add a hypercore to the indexer. Must have the same value encoding as other
 hypercores already in the indexer.
 
+Rejects if called after the indexer is closed.
+
+### indexer.idle()
+
+Resolves when indexing state is `'idle'`.
+
+Resolves if the indexer is closed before this resolves. Rejects if called
+after the indexer is closed.
+
 ### indexer.close()
 
 Stop the indexer and flush index state to storage. This will not close the
@@ -146,7 +155,9 @@ underlying storage - it is up to the consumer to do that.
 
 ### indexer.unlink()
 
-Unlink all index files. This should only be called after `close()` has resolved.
+Unlink all index files.
+
+This should only be called after `close()` has resolved, and rejects if not.
 
 ### indexer.on('index-state', onState)
 
