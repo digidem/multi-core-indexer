@@ -118,7 +118,7 @@ class MultiCoreIndexer extends TypedEmitter {
    * Stop the indexer and flush index state to storage. This will not close the
    * underlying storage - it is up to the consumer to do that.
    *
-   * Rejects if called more than once.
+   * No-op if called more than once.
    */
   async close() {
     if (!this.#isOpen()) return

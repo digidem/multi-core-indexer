@@ -153,6 +153,8 @@ after the indexer is closed.
 Stop the indexer and flush index state to storage. This will not close the
 underlying storage - it is up to the consumer to do that.
 
+No-op if called more than once.
+
 ### indexer.unlink()
 
 Unlink all index files.
