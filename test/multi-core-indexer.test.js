@@ -95,7 +95,7 @@ test('Indexes items appended after initial index', async () => {
   await indexer.close()
 })
 
-test('No cores, starts idle, indexing after core added', async () => {
+test('State transitions', async () => {
   const indexer = new MultiCoreIndexer([], {
     batch: async () => {},
     storage: () => new ram(),
@@ -106,7 +106,19 @@ test('No cores, starts idle, indexing after core added', async () => {
   indexer.addCore(core)
   assert.equal(indexer.state.current, 'indexing', 'indexing after core added')
   await indexer.idle()
-  await indexer.close()
+  assert.equal(indexer.state.current, 'idle', 'returns to an idle state')
+  const closePromise = indexer.close()
+  assert.equal(
+    indexer.state.current,
+    'closing',
+    'moves to a "closing" state immediately after calling close'
+  )
+  await closePromise
+  assert.equal(
+    indexer.state.current,
+    'closed',
+    'moves to a "closed" state after closing'
+  )
 })
 
 test('Calling idle() when already idle still resolves', async () => {
@@ -539,6 +551,76 @@ test('Closing before batch complete should resume on next start', async () => {
   assert.equal(entries.length, expected.length)
   // t.same(sortEntries(entries), sortEntries(expected))
   await indexer2.close()
+})
+
+test('double-closing is a no-op', async (t) => {
+  const indexer = new MultiCoreIndexer([], {
+    batch: async () => {},
+    storage: () => new ram(),
+  })
+  const closePromise = indexer.close()
+  t.after(() => closePromise)
+
+  await assert.doesNotReject(() => indexer.close())
+})
+
+test('closing causes many methods to fail', async (t) => {
+  {
+    const indexer = new MultiCoreIndexer([], {
+      batch: async () => {},
+      storage: () => new ram(),
+    })
+    const closePromise = indexer.close()
+    t.after(() => closePromise)
+    const core = await create()
+    assert.throws(() => indexer.addCore(core))
+  }
+
+  {
+    const indexer = new MultiCoreIndexer([], {
+      batch: async () => {},
+      storage: () => new ram(),
+    })
+    const closePromise = indexer.close()
+    t.after(() => closePromise)
+    await assert.rejects(() => indexer.idle())
+  }
+})
+
+test('closing resolves existing idle promises', async () => {
+  const indexer = new MultiCoreIndexer([], {
+    batch: async () => {},
+    storage: () => new ram(),
+  })
+
+  const core = await create()
+  indexer.addCore(core)
+
+  const idlePromises = [indexer.idle(), indexer.idle(), indexer.idle()]
+
+  await indexer.close()
+
+  await assert.doesNotReject(() => Promise.all(idlePromises))
+})
+
+test('unlinking requires the indexer to be closed', async () => {
+  const indexer = new MultiCoreIndexer([], {
+    batch: async () => {},
+    storage: () => new ram(),
+  })
+
+  await indexer.idle()
+  await assert.rejects(() => indexer.unlink(), 'rejects when idle')
+
+  const core = await create()
+  indexer.addCore(core)
+  await assert.rejects(() => indexer.unlink(), 'rejects when indexing')
+
+  const closePromise = indexer.close()
+  await assert.rejects(() => indexer.unlink(), 'rejects when closing')
+
+  await closePromise
+  await assert.doesNotReject(() => indexer.unlink())
 })
 
 // This checks that storage names do not change between versions, which would be a breaking change

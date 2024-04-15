@@ -1,6 +1,6 @@
 import { ReadableEvents } from 'streamx'
 
-export type IndexStateCurrent = 'idle' | 'indexing'
+export type IndexStateCurrent = 'idle' | 'indexing' | 'closing' | 'closed'
 
 export interface IndexState {
   current: IndexStateCurrent
