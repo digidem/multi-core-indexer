@@ -553,6 +553,17 @@ test('Closing before batch complete should resume on next start', async () => {
   await indexer2.close()
 })
 
+test('double-closing is a no-op', async (t) => {
+  const indexer = new MultiCoreIndexer([], {
+    batch: async () => {},
+    storage: () => new ram(),
+  })
+  const closePromise = indexer.close()
+  t.after(() => closePromise)
+
+  await assert.doesNotReject(() => indexer.close())
+})
+
 test('closing causes many methods to fail', async (t) => {
   {
     const indexer = new MultiCoreIndexer([], {
@@ -573,16 +584,6 @@ test('closing causes many methods to fail', async (t) => {
     const closePromise = indexer.close()
     t.after(() => closePromise)
     await assert.rejects(() => indexer.idle())
-  }
-
-  {
-    const indexer = new MultiCoreIndexer([], {
-      batch: async () => {},
-      storage: () => new ram(),
-    })
-    const closePromise = indexer.close()
-    t.after(() => closePromise)
-    await assert.rejects(() => indexer.close())
   }
 })
 

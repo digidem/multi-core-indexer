@@ -121,7 +121,7 @@ class MultiCoreIndexer extends TypedEmitter {
    * Rejects if called more than once.
    */
   async close() {
-    this.#assertOpen('Cannot double-close')
+    if (!this.#isOpen()) return
     this.#state = 'closing'
     this.#indexStream.off('indexing', this.#emitStateBound)
     this.#indexStream.off('drained', this.#emitStateBound)
@@ -154,19 +154,24 @@ class MultiCoreIndexer extends TypedEmitter {
     }
   }
 
-  /** @param {string} message */
-  #assertOpen(message) {
+  /** @returns {boolean} */
+  #isOpen() {
     switch (this.#state) {
       case 'idle':
       case 'indexing':
-        return
+        return true
       case 'closing':
       case 'closed':
-        throw new Error(message)
+        return false
       /* c8 ignore next 2 */
       default:
         throw new ExhaustivenessError(this.#state)
     }
+  }
+
+  /** @param {string} message */
+  #assertOpen(message) {
+    if (!this.#isOpen()) throw new Error(message)
   }
 
   /** @param {Entry<T>[]} entries */
