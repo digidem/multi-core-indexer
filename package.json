@@ -1,6 +1,6 @@
 {
   "name": "multi-core-indexer",
-  "version": "1.0.0-alpha.9",
+  "version": "1.0.0-alpha.10",
   "description": "Index one or more hypercores",
   "main": "index.js",
   "types": "types/index.d.ts",

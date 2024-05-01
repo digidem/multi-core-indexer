@@ -2,6 +2,25 @@
 
 All notable changes to this project will be documented in this file. See [standard-version](https://github.com/conventional-changelog/standard-version) for commit guidelines.
 
+## [1.0.0-alpha.10](https://github.com/digidem/multi-core-indexer/compare/v1.0.0-alpha.9...v1.0.0-alpha.10) (2024-05-01)
+
+### ⚠ BREAKING CHANGES
+
+- drop Node 16 support (#40)
+- Node 16.17.1+ is now required.
+
+### Features
+
+- add method to unlink storage ([#34](https://github.com/digidem/multi-core-indexer/issues/34)) ([98a0e25](https://github.com/digidem/multi-core-indexer/commit/98a0e2537fa7f77ce4e99de9298acfc805549a10)), closes [#26](https://github.com/digidem/multi-core-indexer/issues/26)
+- reject if closed state is incorrect ([#42](https://github.com/digidem/multi-core-indexer/issues/42)) ([f56037a](https://github.com/digidem/multi-core-indexer/commit/f56037a752887b02a9ddb92cec5c39993dab5461))
+
+### Bug Fixes
+
+- docs shouldn't require ready cores ([#29](https://github.com/digidem/multi-core-indexer/issues/29)) ([7cd3aaf](https://github.com/digidem/multi-core-indexer/commit/7cd3aafa70f2894042a5ac9929eb6ad083ad4177)), closes [#24](https://github.com/digidem/multi-core-indexer/issues/24)
+
+- develop on Node 20, CI with 16.17.1 + 18.17.1 + 20 ([#35](https://github.com/digidem/multi-core-indexer/issues/35)) ([b85c3b6](https://github.com/digidem/multi-core-indexer/commit/b85c3b6f782a23a6cbbec2ebedf663fea955d66e))
+- drop Node 16 support ([#40](https://github.com/digidem/multi-core-indexer/issues/40)) ([c87f8fb](https://github.com/digidem/multi-core-indexer/commit/c87f8fbd55dca131dd45770012369c6f28cf5d4b))
+
 ## [1.0.0-alpha.9](https://github.com/digidem/multi-core-indexer/compare/v1.0.0-alpha.8...v1.0.0-alpha.9) (2023-11-28)
 
 ### Features
