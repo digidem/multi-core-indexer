@@ -79,7 +79,10 @@ async function generateFixtures(cores, count) {
     const offset = core.length
     const blocks = generateFixture(offset, offset + count)
     await core.append(blocks)
-    entries.push.apply(entries, blocksToExpected(blocks, core.key, offset))
+    entries.push.apply(
+      entries,
+      blocksToExpected(blocks, core.discoveryKey, offset)
+    )
   }
   return entries
 }
@@ -133,8 +136,8 @@ function throttledStreamEvent(emitter, eventName) {
  * @returns number
  */
 function sort(a, b) {
-  const aKey = a.key.toString('hex') + a.block.toString()
-  const bKey = b.key.toString('hex') + b.block.toString()
+  const aKey = a.discoveryId + a.block.toString()
+  const bKey = b.discoveryId + b.block.toString()
   return aKey < bKey ? -1 : aKey > bKey ? 1 : 0
 }
 
@@ -146,12 +149,12 @@ function sortEntries(e) {
 /**
  *
  * @param {Buffer[]} blocks
- * @param {Buffer} key
- * @returns
+ * @param {Buffer} discoveryKey
+ * @returns {Entry[]}
  */
-function blocksToExpected(blocks, key, offset = 0) {
+function blocksToExpected(blocks, discoveryKey, offset = 0) {
   return blocks.map((block, i) => ({
-    key,
+    discoveryId: discoveryKey.toString('hex'),
     block,
     index: i + offset,
   }))
@@ -173,7 +176,7 @@ async function createMultiple(n) {
 function logEntries(e) {
   console.log(
     sortEntries(e).map((e) => ({
-      key: e.key.toString('hex'),
+      discoveryId: e.discoveryId,
       block: e.block.toString(),
       index: e.index,
     }))

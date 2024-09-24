@@ -1,6 +1,6 @@
 // @ts-check
 const MultiCoreIndexer = require('../')
-const test = require('node:test')
+const { test } = require('node:test')
 const assert = require('node:assert/strict')
 const ram = require('random-access-memory')
 const {

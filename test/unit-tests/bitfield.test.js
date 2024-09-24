@@ -1,4 +1,4 @@
-const test = require('node:test')
+const { test } = require('node:test')
 const assert = require('node:assert/strict')
 const ram = require('random-access-memory')
 const Bitfield = require('../../lib/bitfield')
