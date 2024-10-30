@@ -2,6 +2,12 @@
 
 All notable changes to this project will be documented in this file. See [standard-version](https://github.com/conventional-changelog/standard-version) for commit guidelines.
 
+## [1.0.0](https://github.com/digidem/multi-core-indexer/compare/v1.0.0-alpha.10...v1.0.0) (2024-10-30)
+
+### Features
+
+- reindexing ([#45](https://github.com/digidem/multi-core-indexer/issues/45)) ([b8a7957](https://github.com/digidem/multi-core-indexer/commit/b8a7957a1b40d998d2cf7d8e706e90053b21be51))
+
 ## [1.0.0-alpha.10](https://github.com/digidem/multi-core-indexer/compare/v1.0.0-alpha.9...v1.0.0-alpha.10) (2024-05-01)
 
 ### ⚠ BREAKING CHANGES
