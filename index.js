@@ -34,6 +34,7 @@ class MultiCoreIndexer extends TypedEmitter {
   #rateMeasurementStart = Date.now()
   #rate = 0
   #createStorage
+  #reindex
   /** @type {IndexState | undefined} */
   #prevEmittedState
   #emitStateBound
@@ -46,13 +47,18 @@ class MultiCoreIndexer extends TypedEmitter {
    * @param {object} opts
    * @param {(entries: Entry<T>[]) => Promise<void>} opts.batch
    * @param {StorageParam} opts.storage
+   * @param {boolean} [opts.reindex]
    * @param {number} [opts.maxBatch=100]
    */
-  constructor(cores, { batch, maxBatch = DEFAULT_BATCH_SIZE, storage }) {
+  constructor(
+    cores,
+    { batch, maxBatch = DEFAULT_BATCH_SIZE, storage, reindex = false }
+  ) {
     super()
     this.#createStorage = MultiCoreIndexer.defaultStorage(storage)
+    this.#reindex = reindex
     const coreIndexStreams = cores.map((core) => {
-      return new CoreIndexStream(core, this.#createStorage)
+      return new CoreIndexStream(core, this.#createStorage, reindex)
     })
     this.#indexStream = new MultiCoreIndexStream(coreIndexStreams, {
       highWaterMark: maxBatch,
@@ -95,7 +101,11 @@ class MultiCoreIndexer extends TypedEmitter {
    */
   addCore(core) {
     this.#assertOpen('Cannot add core after closing')
-    const coreIndexStream = new CoreIndexStream(core, this.#createStorage)
+    const coreIndexStream = new CoreIndexStream(
+      core,
+      this.#createStorage,
+      this.#reindex
+    )
     this.#indexStream.addStream(coreIndexStream)
   }
 
