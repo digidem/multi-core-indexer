@@ -1,6 +1,6 @@
 // @ts-check
 const { CoreIndexStream } = require('../../lib/core-index-stream')
-const test = require('node:test')
+const { test } = require('node:test')
 const assert = require('node:assert/strict')
 const { once } = require('events')
 const ram = require('random-access-memory')
@@ -46,7 +46,7 @@ test('unlink before open', async () => {
 test('Indexes all items already in a core', async () => {
   const a = await create()
   const blocks = generateFixture(0, 10)
-  const expected = blocksToExpected(blocks, a.key)
+  const expected = blocksToExpected(blocks, a.discoveryKey)
   await a.append(blocks)
   /** @type {any[]} */
   const entries = []
@@ -94,7 +94,7 @@ test('.remaining property is accurate', async () => {
   const totalBlocks = 100
   const a = await create()
   const blocks = generateFixture(0, totalBlocks)
-  const expected = blocksToExpected(blocks, a.key)
+  const expected = blocksToExpected(blocks, a.discoveryKey)
   await a.append(blocks)
   /** @type {any[]} */
   const entries = []
@@ -119,7 +119,7 @@ test('Indexes items appended after initial index', async () => {
   stream.on('data', (entry) => entries.push(entry))
   await once(stream, 'drained')
   assert.deepEqual(entries, [], 'no entries before append')
-  const expected = blocksToExpected(blocks, a.key)
+  const expected = blocksToExpected(blocks, a.discoveryKey)
   await a.append(blocks)
   await once(stream, 'drained')
   assert.deepEqual(entries, expected)
@@ -238,12 +238,12 @@ test('Maintains index state', async () => {
 /**
  *
  * @param {Buffer[]} blocks
- * @param {Buffer} key
- * @returns
+ * @param {Buffer} discoveryKey
+ * @returns {import('../../').Entry[]}
  */
-function blocksToExpected(blocks, key) {
+function blocksToExpected(blocks, discoveryKey) {
   return blocks.map((block, i) => ({
-    key,
+    discoveryId: discoveryKey.toString('hex'),
     block,
     index: i,
   }))

@@ -1,7 +1,7 @@
 // @ts-check
 const { CoreIndexStream } = require('../../lib/core-index-stream')
 const { MultiCoreIndexStream } = require('../../lib/multi-core-index-stream')
-const test = require('node:test')
+const { test } = require('node:test')
 const assert = require('node:assert/strict')
 const { once } = require('events')
 const ram = require('random-access-memory')
@@ -14,6 +14,8 @@ const {
   throttledDrain,
   sortEntries,
 } = require('../helpers')
+
+/** @typedef {import('../..').Entry} Entry */
 
 test('Indexes all items already in a core', async () => {
   const cores = await createMultiple(5)
@@ -46,12 +48,14 @@ test('Adding index streams after initialization', async () => {
   const indexStreams = cores.map(
     (core) => new CoreIndexStream(core, () => new ram(), false)
   )
+  /** @type {Entry[]} */
   const entries = []
   const stream = new MultiCoreIndexStream(indexStreams.slice(0, 2))
   stream.addStream(indexStreams[2])
   // Check re-adding a stream that is already being indexed is a no-op
   stream.addStream(indexStreams[1])
   const ws = new Writable({
+    /** @type {(data: Entry[], cb: () => void) => void} */
     writev: (data, cb) => {
       entries.push(...data)
       cb()
@@ -68,7 +72,7 @@ test('Adding index streams after initialization', async () => {
   await once(ws, 'close').catch(() => {})
 })
 
-test('.remaining is as expected', async () => {
+test('.remaining is as expected', { only: true }, async () => {
   const coreCount = 5
   const blockCount = 100
   const cores = await createMultiple(coreCount)
@@ -76,13 +80,15 @@ test('.remaining is as expected', async () => {
   const indexStreams = cores.map(
     (core) => new CoreIndexStream(core, () => new ram(), false)
   )
+  /** @type {Entry[]} */
   const entries = []
   const stream = new MultiCoreIndexStream(indexStreams, { highWaterMark: 10 })
   const ws = new Writable({
+    /** @type {(data: Entry[], cb: () => void) => void} */
     writev: (data, cb) => {
       entries.push(...data)
-      for (const { key, index } of data) {
-        stream.setIndexed(key.toString('hex'), index)
+      for (const { discoveryId, index } of data) {
+        stream.setIndexed(discoveryId, index)
       }
       assert.equal(
         stream.remaining,
@@ -108,6 +114,7 @@ test('Indexes items appended after initial index', async () => {
   const indexStreams = cores.map(
     (core) => new CoreIndexStream(core, () => new ram(), false)
   )
+  /** @type {Entry[]} */
   const entries = []
   const stream = new MultiCoreIndexStream(indexStreams, { highWaterMark: 10 })
   stream.on('data', (entry) => entries.push(entry))
@@ -216,7 +223,7 @@ test('Maintains index state', async () => {
   const stream = new MultiCoreIndexStream(indexStreams)
   stream.on('data', (entry) => {
     entries.push(entry)
-    stream.setIndexed(entry.key.toString('hex'), entry.index)
+    stream.setIndexed(entry.discoveryId, entry.index)
   })
 
   const expectedPromise = generateFixtures(cores, 1000)
