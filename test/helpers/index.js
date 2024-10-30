@@ -42,7 +42,6 @@ function replicate(a, b) {
 
 /** @param {any} args */
 async function create(...args) {
-  /* @ts-ignore: TODO: better types for random access modules */
   const core = new Hypercore(ram, ...args)
   await core.ready()
   return core

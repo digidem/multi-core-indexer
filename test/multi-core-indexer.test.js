@@ -2,6 +2,7 @@
 const MultiCoreIndexer = require('../')
 const test = require('node:test')
 const assert = require('node:assert/strict')
+const { setTimeout: delay } = require('node:timers/promises')
 const ram = require('random-access-memory')
 const {
   create,
@@ -11,9 +12,41 @@ const {
   sortEntries,
 } = require('./helpers')
 const { testKeypairs, expectedStorageNames } = require('./fixtures.js')
+const { pDefer } = require('../lib/utils.js')
 const Hypercore = require('hypercore')
 
 /** @typedef {import('../lib/types').Entry<'binary'>} Entry */
+
+test('Indexer waits for core to be ready before idling', async (t) => {
+  const delayingCoreReady = pDefer()
+  t.after(() => delayingCoreReady.resolve({}))
+
+  const core = new Hypercore(ram, {
+    preload: () => delayingCoreReady.promise,
+  })
+  assert(!isCoreReady(core), 'test setup: core is not ready at the start')
+
+  const indexer = new MultiCoreIndexer([core], {
+    batch: async () => {
+      assert.fail('This should never be called')
+    },
+    storage: () => new ram(),
+  })
+  t.after(() => indexer.close())
+
+  assert(!isCoreReady(core), 'test setup: core is still not ready')
+  assert.equal(indexer.state.current, 'indexing')
+
+  await delay(1)
+
+  assert(!isCoreReady(core), 'test setup: core is still not ready')
+  assert.equal(indexer.state.current, 'indexing')
+
+  delayingCoreReady.resolve({})
+
+  await indexer.idle()
+  assert.equal(indexer.state.current, 'idle')
+})
 
 test('Indexes all items already in a core', async () => {
   const cores = await createMultiple(5)
@@ -723,3 +756,11 @@ test('Indexes all items already in a core - cores not ready', async () => {
   assert.deepEqual(sortEntries(entries), sortEntries(expected))
   await indexer.close()
 })
+
+/**
+ * @param {Readonly<Hypercore>} core
+ * @returns {boolean}
+ */
+function isCoreReady(core) {
+  return core.writable
+}
