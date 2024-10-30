@@ -106,6 +106,14 @@ string, that should return a
 is used to store the index state of each hypercore. (Index state is stored as a
 bitfield).
 
+#### opts.reindex
+
+_Optional_\
+Type: `boolean`
+
+If `true`, the cores, and any new ones that are added, will be reindexed from
+scratch.
+
 #### opts.maxBatch
 
 _Optional_\

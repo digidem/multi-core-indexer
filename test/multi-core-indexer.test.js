@@ -366,6 +366,42 @@ test('Entries are re-indexed if index storage unlinked', async () => {
   await indexer2.close()
 })
 
+test('Entries can be explicitly reindexed with a startup option', async (t) => {
+  const cores = await createMultiple(3)
+  const [core1, core2, core3] = cores
+  const expectedIn1And2 = await generateFixtures([core1, core2], 3)
+  const expectedIn3 = await generateFixtures([core3], 3)
+
+  const storage = ram.reusable()
+
+  const indexer1 = new MultiCoreIndexer(cores, {
+    batch: async () => {},
+    storage,
+  })
+  await indexer1.idle()
+  await indexer1.close()
+
+  /** @type {Entry[]} */ const entries = []
+  const indexer2 = new MultiCoreIndexer([core1, core2], {
+    batch: async (data) => {
+      entries.push(...data)
+    },
+    storage,
+    reindex: true,
+  })
+  t.after(() => indexer2.close())
+
+  await indexer2.idle()
+  assert.deepEqual(new Set(entries), new Set(expectedIn1And2))
+
+  indexer2.addCore(core3)
+  await indexer2.idle()
+  assert.deepEqual(
+    new Set(entries),
+    new Set([...expectedIn1And2, ...expectedIn3])
+  )
+})
+
 test('Entries are batched to batchMax when indexing is slower than Hypercore reads', async () => {
   const cores = await createMultiple(5)
   await generateFixtures(cores, 500)
