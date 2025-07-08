@@ -186,7 +186,9 @@ class MultiCoreIndexer extends TypedEmitter {
 
   /** @param {Entry<T>[]} entries */
   async #handleEntries(entries) {
-    this.#emitState()
+    const shouldContinue = this.#emitState()
+    // Don't keep processing entries if we're closed
+    if (!shouldContinue) return
     /* c8 ignore next - not sure this is necessary, but better safe than sorry */
     if (!entries.length) return
     await this.#batch(entries)
@@ -205,6 +207,7 @@ class MultiCoreIndexer extends TypedEmitter {
     this.#emitState()
   }
 
+  /** @returns {boolean} shouldContinue */
   #emitState() {
     const state = this.#getState()
     switch (state.current) {
@@ -218,11 +221,11 @@ class MultiCoreIndexer extends TypedEmitter {
           this.emit('index-state', state)
         }
         this.#prevEmittedState = state
-        break
+        return true
       /* c8 ignore next 3 */
       case 'closing':
       case 'closed':
-        break
+        return false
       /* c8 ignore next 2 */
       default:
         throw new ExhaustivenessError(state.current)
