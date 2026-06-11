@@ -154,6 +154,20 @@ test('State transitions', async () => {
   )
 })
 
+test('addCore() is a no-op after close (does not throw)', async () => {
+  const indexer = new MultiCoreIndexer([], {
+    batch: async () => {},
+    storage: () => new ram(),
+  })
+  await indexer.close()
+  const core = await create()
+  assert.doesNotThrow(
+    () => indexer.addCore(core),
+    'addCore after close should not throw'
+  )
+  assert.equal(indexer.state.current, 'closed', 'stays closed')
+})
+
 test('Calling idle() when already idle still resolves', async () => {
   const cores = await createMultiple(5)
   const expected = await generateFixtures(cores, 10)
@@ -648,7 +662,8 @@ test('closing causes many methods to fail', async (t) => {
     const closePromise = indexer.close()
     t.after(() => closePromise)
     const core = await create()
-    assert.throws(() => indexer.addCore(core))
+    // addCore is a no-op after close (a late add-core during teardown must not throw)
+    assert.doesNotThrow(() => indexer.addCore(core))
   }
 
   {

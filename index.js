@@ -95,12 +95,14 @@ class MultiCoreIndexer extends TypedEmitter {
    * Add a hypercore to the indexer. Must have the same value encoding as other
    * hypercores already in the indexer.
    *
-   * Rejects if called after the indexer is closed.
+   * No-op if called after the indexer is closing/closed: adding a core to a
+   * torn-down indexer is meaningless, and a late `add-core` event during
+   * teardown should not throw (mirrors `close()`'s own idempotency).
    *
    * @param {import('hypercore')<T, any>} core
    */
   addCore(core) {
-    this.#assertOpen('Cannot add core after closing')
+    if (!this.#isOpen()) return
     const coreIndexStream = new CoreIndexStream(
       core,
       this.#createStorage,
