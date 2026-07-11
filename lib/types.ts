@@ -28,7 +28,7 @@ export type ValueEncoding = 'binary' | 'utf-8' | 'json'
 
 export interface Entry<T extends ValueEncoding = 'binary'> {
   index: number
-  key: Buffer
+  discoveryId: string
   block: T extends 'binary' ? Buffer : T extends 'utf-8' ? string : JSONValue
 }
 
