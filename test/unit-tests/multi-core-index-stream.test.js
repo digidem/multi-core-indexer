@@ -6,8 +6,13 @@ const assert = require('node:assert/strict')
 const { once } = require('events')
 const ram = require('random-access-memory')
 const { Writable } = require('streamx')
+
+// Cores are backed by RocksDB storage: close them after each test so native
+// resources don't accumulate across tests
+test.afterEach(() => closeCreatedCores())
 const {
   create,
+  closeCreatedCores,
   replicate,
   createMultiple,
   generateFixtures,
@@ -103,13 +108,14 @@ test('.remaining is as expected', async () => {
   await once(ws, 'close').catch(() => {})
 })
 
-test('Indexes items appended after initial index', async () => {
+test('Indexes items appended after initial index', async (t) => {
   const cores = await createMultiple(5)
   const indexStreams = cores.map(
     (core) => new CoreIndexStream(core, () => new ram(), false)
   )
   const entries = []
   const stream = new MultiCoreIndexStream(indexStreams, { highWaterMark: 10 })
+  t.after(() => destroyStream(stream))
   stream.on('data', (entry) => entries.push(entry))
   await throttledDrain(stream)
   assert.deepEqual(entries, [], 'no entries before append')
@@ -120,7 +126,7 @@ test('Indexes items appended after initial index', async () => {
   await once(stream, 'close')
 })
 
-test('index sparse hypercores', async () => {
+test('index sparse hypercores', async (t) => {
   const coreCount = 5
   const localCores = await createMultiple(coreCount)
   const expected = []
@@ -142,6 +148,7 @@ test('index sparse hypercores', async () => {
   }
   const entries = []
   const stream = new MultiCoreIndexStream(indexStreams, { highWaterMark: 10 })
+  t.after(() => destroyStream(stream))
   stream.on('data', (entry) => entries.push(entry))
   await throttledDrain(stream)
 
@@ -160,7 +167,7 @@ test('index sparse hypercores', async () => {
   )
 })
 
-test('Appends from a replicated core are indexed', async () => {
+test('Appends from a replicated core are indexed', async (t) => {
   const coreCount = 5
   const localCores = await createMultiple(coreCount)
   const expected1 = await generateFixtures(localCores, 50)
@@ -176,6 +183,7 @@ test('Appends from a replicated core are indexed', async () => {
   }
   const entries = []
   const stream = new MultiCoreIndexStream(indexStreams, { highWaterMark: 10 })
+  t.after(() => destroyStream(stream))
   stream.on('data', (entry) => entries.push(entry))
   await throttledDrain(stream)
 
@@ -193,7 +201,7 @@ test('Appends from a replicated core are indexed', async () => {
   )
 })
 
-test('Maintains index state', async () => {
+test('Maintains index state', async (t) => {
   const cores = await createMultiple(5)
   const storages = []
   await generateFixtures(cores, 1000)
@@ -214,6 +222,7 @@ test('Maintains index state', async () => {
     (core, i) => new CoreIndexStream(core, storages[i], false)
   )
   const stream = new MultiCoreIndexStream(indexStreams)
+  t.after(() => destroyStream(stream))
   stream.on('data', (entry) => {
     entries.push(entry)
     stream.setIndexed(entry.key.toString('hex'), entry.index)
@@ -224,3 +233,28 @@ test('Maintains index state', async () => {
   const expected = await expectedPromise
   assert.deepEqual(sortEntries(entries), sortEntries(expected))
 })
+
+test('Source stream errors after destroy() are ignored', async () => {
+  const core = await create()
+  const stream = new CoreIndexStream(core, () => new ram(), false)
+  const multi = new MultiCoreIndexStream([stream])
+  /** @type {Error[]} */
+  const errors = []
+  multi.on('error', (err) => errors.push(err))
+  multi.destroy()
+  // Emitted in the window between destroy() and teardown removing listeners
+  stream.emit('error', new Error('source error during teardown'))
+  await once(multi, 'close')
+  assert.equal(errors.length, 0, 'source error is not forwarded')
+})
+
+/**
+ * Destroy a stream and wait for it to close
+ *
+ * @param {import('streamx').Readable} stream
+ */
+async function destroyStream(stream) {
+  if (stream.destroyed) return
+  stream.destroy()
+  await once(stream, 'close')
+}

@@ -6,11 +6,18 @@ const { once } = require('events')
 const ram = require('random-access-memory')
 const {
   create,
+  createTempDir,
+  trackCore,
+  closeCreatedCores,
   replicate,
   generateFixture,
   throttledDrain,
 } = require('../helpers')
 const Hypercore = require('hypercore')
+
+// Cores are backed by RocksDB storage: close them after each test so native
+// resources don't accumulate across tests
+test.afterEach(() => closeCreatedCores())
 
 test('stream.core', async () => {
   const a = await create()
@@ -24,7 +31,7 @@ test('destroy before open', async () => {
     storageCreated = true
     return new ram()
   }
-  const a = new Hypercore(() => new ram())
+  const a = trackCore(new Hypercore(createTempDir()))
   const stream = new CoreIndexStream(a, createStorage, false)
   stream.destroy()
   await once(stream, 'close')
@@ -37,7 +44,7 @@ test('unlink before open', async () => {
     storageCreated = true
     return new ram()
   }
-  const core = new Hypercore(() => new ram())
+  const core = trackCore(new Hypercore(createTempDir()))
   const stream = new CoreIndexStream(core, createStorage, false)
   await stream.unlink()
   assert.equal(storageCreated, true, 'storage was created')
@@ -173,8 +180,16 @@ test("'indexing' and 'drained' events are paired", async () => {
   })
   stream.resume()
 
-  const range = b.download({ start: 0, end: a.length })
-  await Promise.all([range.downloaded(), throttledDrain(stream)])
+  // Download in separate waves, draining in between, so that the stream goes
+  // through multiple indexing -> drained cycles
+  for (const [start, end] of [
+    [0, 30],
+    [30, 60],
+    [60, 100],
+  ]) {
+    const range = b.download({ start, end })
+    await Promise.all([range.downloaded(), throttledDrain(stream)])
+  }
 
   assert.equal(indexingEvents, idleEvents)
   // This is just to check that we're actually testing something
@@ -248,3 +263,50 @@ function blocksToExpected(blocks, key) {
     index: i,
   }))
 }
+
+test('Core closed while reads are pending: blocks are skipped without error', async (t) => {
+  const a = await create()
+  await a.append(generateFixture(0, 10))
+  /** @type {Promise<void> | undefined} */
+  let closePromise
+  const originalGet = a.get.bind(a)
+  // Trigger close from inside the first read: core.close() sets `closing`
+  // synchronously, so the read below rejects the same way as an in-flight
+  // read of a core that is closed while indexing
+  // @ts-ignore - patching for the test
+  a.get = (index, opts) => {
+    closePromise ??= a.close()
+    return originalGet(index, opts)
+  }
+  const stream = new CoreIndexStream(a, () => new ram(), false)
+  t.after(() => stream.destroy())
+  /** @type {Error[]} */
+  const errors = []
+  stream.on('error', (err) => errors.push(err))
+  stream.on('data', () => assert.fail('no entries should be pushed'))
+  await once(stream, 'drained')
+  assert.equal(errors.length, 0, 'read rejections from the close are skipped')
+  assert.equal(stream.remaining, 0)
+  await closePromise
+})
+
+test('A core read failure not caused by closing destroys the stream', async (t) => {
+  const a = await create()
+  await a.append(generateFixture(0, 10))
+  const readError = Object.assign(new Error('EIO: i/o error, read'), {
+    code: 'EIO',
+  })
+  const originalGet = a.get.bind(a)
+  // Simulate a storage-level read failure for a single block. The real
+  // storage layer (RocksDB) is native code whose failures cannot be injected
+  // from a test, but its failure mode at this boundary is a rejected get()
+  // on a core that is not closing
+  // @ts-ignore - patching for the test
+  a.get = (index, opts) =>
+    index === 3 ? Promise.reject(readError) : originalGet(index, opts)
+  const stream = new CoreIndexStream(a, () => new ram(), false)
+  t.after(() => stream.destroy())
+  stream.resume()
+  const [err] = await once(stream, 'error')
+  assert.equal(err, readError, 'the stream is destroyed with the read error')
+})

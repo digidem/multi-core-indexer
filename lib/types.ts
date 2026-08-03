@@ -2,6 +2,11 @@ import { ReadableEvents } from 'streamx'
 
 export type IndexStateCurrent = 'idle' | 'indexing' | 'closing' | 'closed'
 
+export interface IndexStreamEvents extends ReadableEvents {
+  drained: []
+  indexing: []
+}
+
 export interface IndexState {
   current: IndexStateCurrent
   remaining: number
@@ -17,11 +22,7 @@ export interface IndexEvents {
   'index-state': (state: IndexState) => void
   indexing: () => void
   idle: () => void
-}
-
-export type IndexStreamEvents<T> = ReadableEvents<T> & {
-  drained: () => void
-  indexing: () => void
+  error: (err: Error) => void
 }
 
 export type ValueEncoding = 'binary' | 'utf-8' | 'json'

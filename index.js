@@ -1,7 +1,6 @@
 // @ts-check
 const { Writable } = require('streamx')
 const { TypedEmitter } = require('tiny-typed-emitter')
-const { once } = require('events')
 const raf = require('random-access-file')
 const { CoreIndexStream } = require('./lib/core-index-stream')
 const { MultiCoreIndexStream } = require('./lib/multi-core-index-stream')
@@ -40,12 +39,19 @@ class MultiCoreIndexer extends TypedEmitter {
   #emitStateBound
   /** @type {import('./lib/utils.js').DeferredPromise | undefined} */
   #pendingIdle
+  /** @type {Promise<unknown>} */
+  #streamsClosed
+  /** @type {Promise<void> | undefined} */
+  #closePromise
 
   /**
    *
    * @param {import('hypercore')<T, any>[]} cores
    * @param {object} opts
-   * @param {(entries: Entry<T>[]) => Promise<void>} opts.batch
+   * @param {(entries: Entry<T>[]) => Promise<void>} opts.batch Called with
+   * entries to be indexed. Delivery is at-least-once: entries that were in an
+   * unfinished batch during an unclean close or error are delivered again on
+   * the next start, so this function must be idempotent.
    * @param {StorageParam} opts.storage
    * @param {boolean} [opts.reindex]
    * @param {number} [opts.maxBatch=100]
@@ -64,16 +70,32 @@ class MultiCoreIndexer extends TypedEmitter {
       highWaterMark: maxBatch,
     })
     this.#batch = batch
-    this.#writeStream = /** @type {Writable<Entry<T>>} */ (
-      new Writable({
-        writev: (entries, cb) => {
-          this.#handleEntries(entries).then(() => cb(), cb)
-        },
-        highWaterMark: maxBatch,
-        byteLength: () => 1,
-      })
-    )
+    this.#writeStream = new Writable({
+      writev: (entries, cb) => {
+        this.#handleEntries(/** @type {Entry<T>[]} */ (entries)).then(
+          () => cb(null),
+          cb
+        )
+      },
+      highWaterMark: maxBatch,
+      byteLength: () => 1,
+    })
     this.#indexStream.pipe(this.#writeStream)
+    // Capture 'close' promises before any error can destroy the streams, so
+    // that close() can await them even if the streams are already closed.
+    // (events.once() is not used because it rejects on 'error' events)
+    this.#streamsClosed = Promise.all(
+      [this.#indexStream, this.#writeStream].map(
+        (stream) => new Promise((res) => stream.once('close', () => res(null)))
+      )
+    )
+    // An error from the source streams (e.g. a core fails to read) or from
+    // the batch function (via writev) destroys the pipeline. Without these
+    // handlers that would throw an uncaught 'error' event and leave close()
+    // and idle() hanging forever.
+    const handleErrorBound = this.#handleError.bind(this)
+    this.#indexStream.on('error', handleErrorBound)
+    this.#writeStream.on('error', handleErrorBound)
     this.#emitStateBound = this.#emitState.bind(this)
     // This is needed because the source streams can start indexing before this
     // stream starts reading data. This ensures that the indexing state is
@@ -95,7 +117,7 @@ class MultiCoreIndexer extends TypedEmitter {
    * Add a hypercore to the indexer. Must have the same value encoding as other
    * hypercores already in the indexer.
    *
-   * Rejects if called after the indexer is closed.
+   * Throws if called after the indexer is closed.
    *
    * @param {import('hypercore')<T, any>} core
    */
@@ -128,21 +150,47 @@ class MultiCoreIndexer extends TypedEmitter {
    * Stop the indexer and flush index state to storage. This will not close the
    * underlying storage - it is up to the consumer to do that.
    *
-   * No-op if called more than once.
+   * No-op if called more than once: returns the same promise as the first call.
+   *
+   * @returns {Promise<void>}
    */
-  async close() {
-    if (!this.#isOpen()) return
+  close() {
+    this.#closePromise ??= this.#close()
+    return this.#closePromise
+  }
+
+  async #close() {
     this.#state = 'closing'
     this.#indexStream.off('indexing', this.#emitStateBound)
     this.#indexStream.off('drained', this.#emitStateBound)
     this.#writeStream.destroy()
     this.#indexStream.destroy()
-    await Promise.all([
-      once(this.#indexStream, 'close'),
-      once(this.#writeStream, 'close'),
-    ])
+    await this.#streamsClosed
     this.#pendingIdle?.resolve()
+    this.#pendingIdle = undefined
     this.#state = 'closed'
+  }
+
+  /**
+   * Called when the stream pipeline is destroyed by an error: from the batch
+   * function rejecting, or from a failure reading a core (e.g. a core closed
+   * while indexing). Emits 'error', rejects any pending idle() promises, and
+   * closes the indexer.
+   *
+   * @param {Error} err
+   */
+  #handleError(err) {
+    // Errors after close() has started are expected teardown noise, e.g.
+    // both streams in the pipeline erroring from the same root cause
+    if (!this.#isOpen()) return
+    const pendingIdle = this.#pendingIdle
+    this.#pendingIdle = undefined
+    this.close().catch(noop)
+    pendingIdle?.reject(err)
+    // Emit asynchronously: this runs inside streamx's destroy dispatch, and a
+    // throw from a missing 'error' listener in the destroy function would stop
+    // the stream from ever emitting 'close' and leave close() hanging.
+    queueMicrotask(() => this.emit('error', err))
   }
 
   /**
@@ -276,5 +324,8 @@ class MultiCoreIndexer extends TypedEmitter {
     }
   }
 }
+
+/* c8 ignore next: only called if close() rejects, which it never should */
+function noop() {}
 
 module.exports = MultiCoreIndexer

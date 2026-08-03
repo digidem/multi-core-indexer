@@ -2,10 +2,11 @@
 const MultiCoreIndexer = require('../')
 const nanobench = require('nanobench')
 const assert = require('assert')
-const ram = require('random-access-memory')
 const {
   generateFixtures,
   createMultiple,
+  createTempDir,
+  closeCreatedCores,
   throttledIdle,
 } = require('../test/helpers')
 
@@ -24,10 +25,12 @@ nanobench('Index 20 cores of 1000 blocks (10 times)', async (b) => {
         await new Promise((res) => setTimeout(res, 10))
       },
       maxBatch: 500,
-      storage: () => new ram(),
+      storage: createTempDir(),
     })
     await throttledIdle(indexer)
     assert(count === expected.length)
+    await indexer.close()
   }
   b.end()
+  await closeCreatedCores()
 })
