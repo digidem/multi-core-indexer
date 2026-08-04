@@ -36,12 +36,16 @@ be indexed when they are downloaded.
 npm install multi-core-indexer
 ```
 
+This is an [ES module](https://nodejs.org/api/esm.html). CommonJS consumers on
+Node >= 20.19 can `require()` it, but get the module namespace, so the indexer
+is at `require('multi-core-indexer').default`.
+
 ## Usage
 
 ```js
-const MultiCoreIndexer = require('multi-core-indexer')
-const raf = require('random-access-file')
-const Hypercore = require('hypercore')
+import MultiCoreIndexer from 'multi-core-indexer'
+import raf from 'random-access-file'
+import Hypercore from 'hypercore'
 
 function createStorage(key) {
   return raf(`./${key}`)

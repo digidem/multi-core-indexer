@@ -1,13 +1,16 @@
 // @ts-check
-const MultiCoreIndexer = require('../')
-const test = require('node:test')
-const assert = require('node:assert/strict')
-const { once } = require('node:events')
-const { spawnSync } = require('node:child_process')
-const path = require('node:path')
-const { setTimeout: delay } = require('node:timers/promises')
-const ram = require('random-access-memory')
-const {
+import test from 'node:test'
+import assert from 'node:assert/strict'
+import { once } from 'node:events'
+import { spawnSync } from 'node:child_process'
+import path from 'node:path'
+import { fileURLToPath, pathToFileURL } from 'node:url'
+import { setTimeout as delay } from 'node:timers/promises'
+import ram from 'random-access-memory'
+import Hypercore from 'hypercore'
+import RandomAccessFile from 'random-access-file'
+import MultiCoreIndexer from '../index.js'
+import {
   create,
   createTempDir,
   trackCore,
@@ -17,13 +20,11 @@ const {
   createMultiple,
   sortEntries,
   uniqueEntries,
-} = require('./helpers')
-const { testKeypairs, expectedStorageNames } = require('./fixtures.js')
-const { pDefer } = require('../lib/utils.js')
-const Hypercore = require('hypercore')
-const RandomAccessFile = require('random-access-file')
+} from './helpers/index.js'
+import { testKeypairs, expectedStorageNames } from './fixtures.js'
+import { pDefer } from '../lib/utils.js'
 
-/** @typedef {import('../lib/types').Entry<'binary'>} Entry */
+/** @typedef {import('../lib/types.js').Entry<'binary'>} Entry */
 
 // Cores are backed by RocksDB storage: close them after each test so native
 // resources don't accumulate across tests
@@ -36,7 +37,7 @@ test('Indexer waits for core to be ready before idling', async (t) => {
   const core = trackCore(
     new Hypercore(createTempDir(), {
       preload: () => delayingCoreReady.promise,
-    })
+    }),
   )
   assert(!isCoreReady(core), 'test setup: core is not ready at the start')
 
@@ -88,7 +89,7 @@ test('Indexes all items already in a core', async () => {
   await indexer.close()
   assert.ok(
     storages.every((storage) => storage.closed),
-    'all storages are closed'
+    'all storages are closed',
   )
 })
 
@@ -160,13 +161,13 @@ test('State transitions', async () => {
   assert.equal(
     indexer.state.current,
     'closing',
-    'moves to a "closing" state immediately after calling close'
+    'moves to a "closing" state immediately after calling close',
   )
   await closePromise
   assert.equal(
     indexer.state.current,
     'closed',
-    'moves to a "closed" state after closing'
+    'moves to a "closed" state after closing',
   )
 })
 
@@ -209,7 +210,7 @@ test('Indexes cores added with addCore method', async () => {
   await indexer.idle()
   assert.deepEqual(
     sortEntries(entries),
-    sortEntries([...initialExpected, ...expected])
+    sortEntries([...initialExpected, ...expected]),
   )
   await indexer.close()
 })
@@ -252,7 +253,7 @@ test('index sparse hypercores', async () => {
 
   assert.deepEqual(
     sortEntries(entries),
-    sortEntries([...expected, ...expected2])
+    sortEntries([...expected, ...expected2]),
   )
   await indexer.close()
 })
@@ -288,7 +289,7 @@ test('Appends from a replicated core are indexed', async () => {
 
   assert.deepEqual(
     sortEntries(entries),
-    sortEntries([...expected1, ...expected2])
+    sortEntries([...expected1, ...expected2]),
   )
   await indexer.close()
 })
@@ -436,7 +437,7 @@ test('Entries can be explicitly reindexed with a startup option', async (t) => {
   assert.deepEqual(
     entriesBeforeReindex,
     allExpected,
-    'test setup: entries are indexed once'
+    'test setup: entries are indexed once',
   )
 
   /** @type {Set<Entry>} */ const entriesAfterReindex = new Set()
@@ -480,7 +481,7 @@ test('Entries are batched to batchMax when indexing is slower than Hypercore rea
     // are expected to be smaller than maxBatch
     assert.ok(
       batchSizes.filter((size) => size < batchSize).length <= 2,
-      `Most batches are ${batchSize}`
+      `Most batches are ${batchSize}`,
     )
     await indexer.close()
   }
@@ -502,7 +503,7 @@ test('Batches smaller than maxBatch when indexing is faster than hypercore reads
   await indexer.idle()
   assert.ok(
     batchSizes.every((size) => size < batchSize),
-    `All batches are smaller than maxBatch`
+    `All batches are smaller than maxBatch`,
   )
   await indexer.close()
 })
@@ -547,7 +548,7 @@ test('sync state / progress', async () => {
     deviations.every((deviation) => deviation <= expectedVariation),
     `state.entriesPerSecond is within ${
       expectedVariation * 100
-    }% of actual rate`
+    }% of actual rate`,
   )
   // The wide bound above is for one-off disk stalls; the typical deviation
   // must be much smaller, so that a systematic error in the rate estimate
@@ -558,8 +559,8 @@ test('sync state / progress', async () => {
   assert.ok(
     medianDeviation <= 0.15,
     `median deviation of state.entriesPerSecond is within 15% of actual rate (got ${Math.round(
-      medianDeviation * 100
-    )}%)`
+      medianDeviation * 100,
+    )}%)`,
   )
 
   await indexer.close()
@@ -608,7 +609,7 @@ test('state.remaining does not update until after batch function resolves', asyn
       assert.deepEqual(
         state.remaining,
         1,
-        'remaining should not decrease until after batch() resolves'
+        'remaining should not decrease until after batch() resolves',
       )
       entries.push(...data)
     },
@@ -647,7 +648,7 @@ test('Closing before batch complete should resume on next start', async () => {
   await indexer1.close()
   assert.ok(
     indexer1.state.remaining <= 2500,
-    'Stopped with half of the entries indexed'
+    'Stopped with half of the entries indexed',
   )
 
   const indexer2 = new MultiCoreIndexer(cores, {
@@ -660,7 +661,7 @@ test('Closing before batch complete should resume on next start', async () => {
   assert.deepEqual(
     sortEntries(uniqueEntries(entries)),
     sortEntries(expected),
-    'every entry is indexed at least once (delivery is at-least-once, so a batch in flight at close may be re-delivered)'
+    'every entry is indexed at least once (delivery is at-least-once, so a batch in flight at close may be re-delivered)',
   )
   await indexer2.close()
 })
@@ -830,23 +831,23 @@ test('Batch callback rejection emits error and indexer still closes', async () =
   await assert.rejects(
     () => idlePromise,
     /batch failed/,
-    'pending idle() rejects with the batch error'
+    'pending idle() rejects with the batch error',
   )
   await assert.rejects(
     () => indexer.idle(),
     /Cannot await idle/,
-    'idle() called after the error rejects'
+    'idle() called after the error rejects',
   )
   assert.throws(
     () => indexer.addCore(cores[0]),
     /Cannot add core/,
-    'addCore() called after the error throws'
+    'addCore() called after the error throws',
   )
   const closePromise = indexer.close()
   assert.equal(
     indexer.close(),
     closePromise,
-    'close() after the error returns the same promise'
+    'close() after the error returns the same promise',
   )
   await assert.doesNotReject(() => closePromise, 'close() still resolves')
   assert.equal(indexer.state.current, 'closed')
@@ -910,7 +911,7 @@ test('Closing a core while indexing: indexer idles, resumes after reopen', async
   await indexer1.idle()
   assert.ok(
     entries1.length < expected.length,
-    'test setup: core closed before indexing completed'
+    'test setup: core closed before indexing completed',
   )
   await indexer1.close()
 
@@ -929,7 +930,7 @@ test('Closing a core while indexing: indexer idles, resumes after reopen', async
   assert.deepEqual(
     sortEntries(uniqueEntries([...entries1, ...entries2])),
     sortEntries(expected),
-    'every entry is indexed at least once across both indexers'
+    'every entry is indexed at least once across both indexers',
   )
 })
 
@@ -962,7 +963,7 @@ test('Index storage write failure (disk full) is emitted as an error', async () 
   // which is how index-storage failures typically show up on mobile
   const storageError = Object.assign(
     new Error('ENOSPC: no space left on device, write'),
-    { code: 'ENOSPC' }
+    { code: 'ENOSPC' },
   )
   let failWrites = false
   const indexer = new MultiCoreIndexer(cores, {
@@ -995,7 +996,7 @@ test('Index storage write failure (disk full) is emitted as an error', async () 
     errorPromise.then(() => 'error'),
     indexer.idle().then(
       () => 'idle',
-      () => 'error'
+      () => 'error',
     ),
   ])
   if (raced === 'idle') await generateFixtures(cores, 10)
@@ -1004,7 +1005,7 @@ test('Index storage write failure (disk full) is emitted as an error', async () 
   assert.equal(
     err.code,
     'ENOSPC',
-    'the error code is preserved, so consumers can classify disk-full errors'
+    'the error code is preserved, so consumers can classify disk-full errors',
   )
   await assert.doesNotReject(() => indexer.close(), 'close() still resolves')
   assert.equal(indexer.state.current, 'closed')
@@ -1081,11 +1082,11 @@ test('Entries in an unfinished batch when closing are re-delivered on restart', 
   assert.deepEqual(
     sortEntries(uniqueEntries(all)),
     sortEntries(expected),
-    'every entry is delivered at least once across restarts'
+    'every entry is delivered at least once across restarts',
   )
   assert.ok(
     all.length >= expected.length,
-    'entries from the unfinished batch may be re-delivered (at-least-once)'
+    'entries from the unfinished batch may be re-delivered (at-least-once)',
   )
 })
 
@@ -1094,12 +1095,14 @@ test("Without an 'error' listener the error is uncaught, but close() still resol
   // (intentionally) thrown as an uncaught exception, which would fail this
   // test process. The child traps it like a crash-reporting app would, then
   // checks that close() still resolves.
+  const packageRoot = fileURLToPath(new URL('..', import.meta.url))
+  const indexerUrl = pathToFileURL(path.join(packageRoot, 'index.js')).href
   const script = `
-    const MultiCoreIndexer = require('./index.js')
-    const Hypercore = require('hypercore')
-    const { mkdtempSync } = require('node:fs')
-    const { tmpdir } = require('node:os')
-    const { join } = require('node:path')
+    import MultiCoreIndexer from ${JSON.stringify(indexerUrl)}
+    import Hypercore from 'hypercore'
+    import { mkdtempSync } from 'node:fs'
+    import { tmpdir } from 'node:os'
+    import { join } from 'node:path'
     process.on('uncaughtException', (err) => {
       console.log('uncaught:' + err.message)
     })
@@ -1129,15 +1132,19 @@ test("Without an 'error' listener the error is uncaught, but close() still resol
     }
     main()
   `
-  const result = spawnSync(process.execPath, ['-e', script], {
-    cwd: path.join(__dirname, '..'),
-    encoding: 'utf8',
-    timeout: 20_000,
-  })
+  const result = spawnSync(
+    process.execPath,
+    ['--input-type=module', '-e', script],
+    {
+      cwd: packageRoot,
+      encoding: 'utf8',
+      timeout: 20_000,
+    },
+  )
   assert.match(
     result.stdout,
     /uncaught:batch failed/,
-    'the batch error is thrown as an uncaught exception'
+    'the batch error is thrown as an uncaught exception',
   )
   assert.match(result.stdout, /close-resolved/, 'close() still resolves')
 })

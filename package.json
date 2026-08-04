@@ -2,14 +2,25 @@
   "name": "multi-core-indexer",
   "version": "1.0.0",
   "description": "Index one or more hypercores",
+  "type": "module",
   "main": "index.js",
   "types": "types/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./types/index.d.ts",
+      "default": "./index.js"
+    },
+    "./package.json": "./package.json"
+  },
+  "engines": {
+    "node": ">=18.0.0"
+  },
   "scripts": {
-    "test": "run-p lint type borp",
+    "test": "run-p lint type unit",
     "lint": "eslint .",
-    "borp": "c8 borp --concurrency 1",
+    "unit": "c8 node --test --test-concurrency=1 test/*.test.js test/unit-tests/*.test.js",
     "type": "tsc",
-    "prepare": "husky install",
+    "prepare": "husky",
     "prepack": "tsc",
     "posttest": "c8 report --reporter=text-lcov > ./coverage/lcov.info"
   },
@@ -20,45 +31,37 @@
     "hypercore": "^11.0.0"
   },
   "dependencies": {
-    "b4a": "^1.6.4",
-    "big-sparse-array": "^1.0.2",
-    "random-access-file": "^4.0.4",
+    "b4a": "^1.8.1",
+    "big-sparse-array": "^1.0.3",
+    "random-access-file": "^4.1.2",
     "streamx": "^2.28.0",
     "tiny-typed-emitter": "^2.1.0"
   },
   "devDependencies": {
-    "@digidem/types": "^1.0.1",
+    "@digidem/types": "^2.4.1",
+    "@eslint/js": "^9.39.5",
     "@types/nanobench": "^3.0.0",
     "@types/node": "^18.19.130",
-    "@types/sodium-native": "^2.3.5",
-    "borp": "^0.9.1",
-    "c8": "^9.1.0",
-    "eslint": "^8.44.0",
-    "husky": "^8.0.3",
-    "hypercore": "^11.35.0",
-    "lint-staged": "^13.2.3",
+    "@types/sodium-native": "^2.3.9",
+    "c8": "^10.1.3",
+    "eslint": "^9.39.5",
+    "globals": "^17.9.0",
+    "husky": "^9.1.7",
+    "hypercore": "^11.35.1",
+    "lint-staged": "^15.5.2",
     "multifeed": "^6.0.0",
     "multifeed-index": "^3.4.2",
     "nanobench": "^3.0.0",
-    "npm-run-all": "^4.1.5",
-    "prettier": "^2.8.1",
-    "pretty-quick": "^3.1.3",
-    "random-access-memory": "^6.2.0",
-    "sodium-native": "^4.0.4",
-    "tempy": "^3.0.0",
-    "typescript": "~5.8.3"
+    "npm-run-all2": "^7.0.2",
+    "prettier": "^3.9.6",
+    "random-access-memory": "^6.2.1",
+    "sodium-native": "^5.1.0",
+    "tempy": "^3.2.0",
+    "typescript": "~5.9.3"
   },
-  "eslintConfig": {
-    "env": {
-      "commonjs": true,
-      "es2021": true,
-      "node": true
-    },
-    "extends": "eslint:recommended",
-    "parserOptions": {
-      "ecmaVersion": "latest"
-    },
-    "rules": {}
+  "overrides": {
+    "bare-addon-resolve": "1.9.7",
+    "noise-protocol": "3.0.1"
   },
   "prettier": {
     "semi": false,
@@ -75,6 +78,7 @@
     "test": "test"
   },
   "files": [
+    "index.js",
     "types",
     "lib"
   ],

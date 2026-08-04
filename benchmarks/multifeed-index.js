@@ -1,12 +1,14 @@
-const Multifeed = require('multifeed')
-const Index = require('multifeed-index')
-const nanobench = require('nanobench')
-const assert = require('assert')
-const { promisify } = require('util')
-const ram = require('random-access-memory')
-const { generateFixture, blocksToExpected } = require('../test/helpers')
+// Requires the `noise-protocol` override in package.json: 3.0.2 changed
+// `dh.js` to export a factory, which breaks simple-hypercore-protocol below.
+import Multifeed from 'multifeed'
+import Index from 'multifeed-index'
+import nanobench from 'nanobench'
+import assert from 'node:assert'
+import { promisify } from 'node:util'
+import ram from 'random-access-memory'
+import { generateFixture, blocksToExpected } from '../test/helpers/index.js'
 
-/** @typedef {import('../lib/types').Entry<'binary'>} Entry */
+/** @typedef {import('../lib/types.js').Entry<'binary'>} Entry */
 
 nanobench('Index 20 cores of 1000 blocks (10 times)', async (b) => {
   const storages = new Map()

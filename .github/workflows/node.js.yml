@@ -16,6 +16,8 @@ jobs:
       matrix:
         node-version: [18.x, 20.x, 22.x, 24.x]
         # See supported Node.js release schedule at https://nodejs.org/en/about/releases/
+        # Node 18 relies on the `bare-addon-resolve` override in package.json;
+        # 1.10.0 uses Array.prototype.with, which needs Node >= 20.
 
     steps:
       - uses: actions/checkout@v4

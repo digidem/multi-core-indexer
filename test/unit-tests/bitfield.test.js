@@ -1,8 +1,8 @@
-const test = require('node:test')
-const assert = require('node:assert/strict')
-const { promisify } = require('node:util')
-const ram = require('random-access-memory')
-const Bitfield = require('../../lib/bitfield')
+import test from 'node:test'
+import assert from 'node:assert/strict'
+import { promisify } from 'node:util'
+import ram from 'random-access-memory'
+import Bitfield from '../../lib/bitfield.js'
 
 /** @param {InstanceType<typeof ram>} storage */
 const closeStorage = (storage) => promisify(storage.close.bind(storage))()
