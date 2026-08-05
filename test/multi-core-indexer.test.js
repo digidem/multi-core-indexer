@@ -853,6 +853,39 @@ test('Batch callback rejection emits error and indexer still closes', async () =
   assert.equal(errors.length, 1, "'error' is emitted only once")
 })
 
+test('Batch error followed by close() during teardown is still emitted', async () => {
+  const cores = await createMultiple(2)
+  await generateFixtures(cores, 100)
+  const batchError = new Error('batch failed')
+  /** @type {() => void} */
+  let onBatchRejected = () => {}
+  const batchRejected = new Promise((res) => {
+    onBatchRejected = /** @type {() => void} */ (res)
+  })
+  const indexer = new MultiCoreIndexer(cores, {
+    batch: async () => {
+      queueMicrotask(onBatchRejected)
+      throw batchError
+    },
+    storage: createTempDir(),
+  })
+  /** @type {Error[]} */
+  const errors = []
+  indexer.on('error', (error) => errors.push(error))
+  await batchRejected
+  // Land inside the window where the pipeline is tearing down from the error
+  // but the pipe callback has not yet delivered it
+  await new Promise((res) => setImmediate(res))
+  assert.throws(
+    () => indexer.addCore(cores[0]),
+    /Cannot add core/,
+    'addCore() throws while the pipeline is dying'
+  )
+  await indexer.close()
+  assert.equal(errors.length, 1, 'error preceding close() is still emitted')
+  assert.equal(errors[0], batchError)
+})
+
 test('Closing a core while indexing: indexer idles, resumes after reopen', async () => {
   const coreDir = createTempDir()
   const storageDir = createTempDir()

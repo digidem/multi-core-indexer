@@ -5,6 +5,13 @@ export type IndexStateCurrent = 'idle' | 'indexing' | 'closing' | 'closed'
 export interface IndexStreamEvents extends ReadableEvents {
   drained: []
   indexing: []
+  /**
+   * Emitted synchronously when the stream (or, for MultiCoreIndexStream, any
+   * of its source streams) starts destroying. Unlike 'error' and 'close',
+   * which only fire after teardown completes, this fires the moment
+   * destruction is initiated.
+   */
+  destroying: []
 }
 
 export interface IndexState {

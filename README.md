@@ -149,14 +149,15 @@ Type: `Hypercore`
 Add a hypercore to the indexer. Must have the same value encoding as other
 hypercores already in the indexer.
 
-Rejects if called after the indexer is closed.
+Throws if called after the indexer is closed or has errored.
 
 ### indexer.idle()
 
 Resolves when indexing state is `'idle'`.
 
-Resolves if the indexer is closed before this resolves. Rejects if called
-after the indexer is closed.
+Resolves if the indexer is cleanly closed before this resolves, and rejects
+with the pipeline error if the indexer errors first. Rejects if called after
+the indexer is closed or has errored.
 
 ### indexer.close()
 

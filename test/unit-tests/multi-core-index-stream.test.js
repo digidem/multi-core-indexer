@@ -248,6 +248,41 @@ test('Source stream errors after destroy() are ignored', async () => {
   assert.equal(errors.length, 0, 'source error is not forwarded')
 })
 
+test("'destroying' is emitted synchronously when a source starts dying", async () => {
+  const core = await create()
+  const stream = new CoreIndexStream(core, () => new ram(), false)
+  const multi = new MultiCoreIndexStream([stream])
+  multi.on('error', () => {})
+  let emitted = 0
+  multi.on('destroying', () => emitted++)
+  stream.destroy(new Error('read failed'))
+  assert.equal(
+    emitted,
+    1,
+    "forwarded from the source's predestroy, before its teardown completes"
+  )
+  // catch: once() rejects on the 'error' event emitted before 'close'
+  await once(multi, 'close').catch(() => {})
+  assert.equal(emitted, 1, 'not re-emitted when the multi stream itself dies')
+})
+
+test('addStream() after destroy() throws', async () => {
+  const [coreA, coreB] = await createMultiple(2)
+  const streamA = new CoreIndexStream(coreA, () => new ram(), false)
+  const streamB = new CoreIndexStream(coreB, () => new ram(), false)
+  const multi = new MultiCoreIndexStream([streamA])
+  multi.on('error', () => {})
+  multi.destroy(new Error('pipeline error'))
+  assert.throws(
+    () => multi.addStream(streamB),
+    /Cannot add stream/,
+    'a stream added during teardown would never be destroyed'
+  )
+  // catch: once() rejects on the 'error' event emitted before 'close'
+  await once(multi, 'close').catch(() => {})
+  await destroyStream(streamB)
+})
+
 /**
  * Destroy a stream and wait for it to close
  *
