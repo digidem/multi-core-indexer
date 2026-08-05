@@ -33,6 +33,7 @@
   "dependencies": {
     "b4a": "^1.8.1",
     "big-sparse-array": "^1.0.3",
+    "custom-error-creator": "^1.4.0",
     "random-access-file": "^4.1.2",
     "streamx": "^2.28.0",
     "tiny-typed-emitter": "^2.1.0"

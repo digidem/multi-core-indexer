@@ -26,6 +26,7 @@ be indexed when they are downloaded.
 - [Install](#install)
 - [Usage](#usage)
 - [API](#api)
+- [Errors](#errors)
 - [Maintainers](#maintainers)
 - [Contributing](#contributing)
 - [License](#license)
@@ -153,15 +154,17 @@ Type: `Hypercore`
 Add a hypercore to the indexer. Must have the same value encoding as other
 hypercores already in the indexer.
 
-Throws if called after the indexer is closed or has errored.
+Throws an error with code `INDEXER_CLOSED` if called after the indexer is
+closed or has errored.
 
 ### indexer.idle()
 
 Resolves when indexing state is `'idle'`.
 
 Resolves if the indexer is cleanly closed before this resolves, and rejects
-with the pipeline error if the indexer errors first. Rejects if called after
-the indexer is closed or has errored.
+with the pipeline error if the indexer errors first. Rejects with an error
+with code `INDEXER_CLOSED` if called after the indexer is closed or has
+errored.
 
 ### indexer.close()
 
@@ -176,7 +179,8 @@ error.
 
 Unlink all index files.
 
-This should only be called after `close()` has resolved, and rejects if not.
+This should only be called after `close()` has resolved, and rejects with an
+error with code `INDEXER_NOT_CLOSED` if not.
 
 ### indexer.on('index-state', onState)
 
@@ -226,6 +230,25 @@ indexer closes itself (pending `idle()` promises reject, `close()` still
 resolves), and indexing can be resumed by creating a new indexer with the same
 storage. As with any Node `EventEmitter`, if no `'error'` listener is attached
 the error is thrown as an uncaught exception.
+
+## Errors
+
+Every error created by this module is a subclass of `Error` with a stable,
+machine-readable `code` property (created with
+[custom-error-creator](https://github.com/digidem/custom-error-creator)).
+Match on `error.code` rather than on the message, which may change between
+versions.
+
+| Code                    | Message                          | When                                                                                       |
+| ----------------------- | -------------------------------- | ------------------------------------------------------------------------------------------ |
+| `INDEXER_CLOSED`        | Cannot {action} after closing    | `addCore()` or `idle()` called after the indexer closed                                    |
+| `INDEXER_NOT_CLOSED`    | Cannot unlink until fully closed | `unlink()` called before `close()` has fully resolved                                      |
+| `MISSING_CORE_KEY`      | Missing core key                 | Internal invariant: a hypercore has no key after `ready()` — should never happen           |
+| `MISSING_DISCOVERY_KEY` | Missing discovery key            | Internal invariant: a hypercore has no discovery key after `ready()` — should never happen |
+
+Errors delivered via the `'error'` event are not created by this module — the
+rejection from your `batch` function, or the underlying hypercore or storage
+error — and are passed through unchanged.
 
 ## Maintainers
 

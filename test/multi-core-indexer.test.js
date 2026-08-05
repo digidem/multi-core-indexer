@@ -687,7 +687,7 @@ test('closing causes many methods to fail', async (t) => {
     const closePromise = indexer.close()
     t.after(() => closePromise)
     const core = await create()
-    assert.throws(() => indexer.addCore(core))
+    assert.throws(() => indexer.addCore(core), { code: 'INDEXER_CLOSED' })
   }
 
   {
@@ -697,7 +697,7 @@ test('closing causes many methods to fail', async (t) => {
     })
     const closePromise = indexer.close()
     t.after(() => closePromise)
-    await assert.rejects(() => indexer.idle())
+    await assert.rejects(() => indexer.idle(), { code: 'INDEXER_CLOSED' })
   }
 })
 
@@ -724,14 +724,26 @@ test('unlinking requires the indexer to be closed', async () => {
   })
 
   await indexer.idle()
-  await assert.rejects(() => indexer.unlink(), 'rejects when idle')
+  await assert.rejects(
+    () => indexer.unlink(),
+    { code: 'INDEXER_NOT_CLOSED' },
+    'rejects when idle',
+  )
 
   const core = await create()
   indexer.addCore(core)
-  await assert.rejects(() => indexer.unlink(), 'rejects when indexing')
+  await assert.rejects(
+    () => indexer.unlink(),
+    { code: 'INDEXER_NOT_CLOSED' },
+    'rejects when indexing',
+  )
 
   const closePromise = indexer.close()
-  await assert.rejects(() => indexer.unlink(), 'rejects when closing')
+  await assert.rejects(
+    () => indexer.unlink(),
+    { code: 'INDEXER_NOT_CLOSED' },
+    'rejects when closing',
+  )
 
   await closePromise
   await assert.doesNotReject(() => indexer.unlink())
