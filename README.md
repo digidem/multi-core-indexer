@@ -224,12 +224,16 @@ indexing again as new data is downloaded.
 _Required_\
 Type: `(err: Error) => void`
 
-Emitted when the batch function rejects, a core read fails, or writing index
-state to storage fails. Errors are not recoverable within the instance: the
-indexer closes itself (pending `idle()` promises reject, `close()` still
-resolves), and indexing can be resumed by creating a new indexer with the same
-storage. As with any Node `EventEmitter`, if no `'error'` listener is attached
-the error is thrown as an uncaught exception.
+Emitted when the batch function rejects (`BATCH_ERROR`), a core read fails
+(`HYPERCORE_ERROR`), or reading or writing index state storage fails
+(`STORAGE_ERROR`) — see [Errors](#errors); the underlying error is available
+as `err.cause`. Errors are not recoverable within the instance: the indexer
+closes itself (pending `idle()` promises reject, `close()` still resolves),
+and indexing can be resumed by creating a new indexer with the same storage.
+An exception thrown by one of your own event listeners (e.g. `'index-state'`)
+will also surface here, unwrapped and without a `code`. As with any Node
+`EventEmitter`, if no `'error'` listener is attached the error is thrown as
+an uncaught exception.
 
 ## Errors
 
@@ -237,18 +241,30 @@ Every error created by this module is a subclass of `Error` with a stable,
 machine-readable `code` property (created with
 [custom-error-creator](https://github.com/digidem/custom-error-creator)).
 Match on `error.code` rather than on the message, which may change between
-versions.
+versions. The error classes are also exported from
+`multi-core-indexer/error.js` for `instanceof` checks:
 
-| Code                    | Message                          | When                                                                                       |
-| ----------------------- | -------------------------------- | ------------------------------------------------------------------------------------------ |
-| `INDEXER_CLOSED`        | Cannot {action} after closing    | `addCore()` or `idle()` called after the indexer closed                                    |
-| `INDEXER_NOT_CLOSED`    | Cannot unlink until fully closed | `unlink()` called before `close()` has fully resolved                                      |
-| `MISSING_CORE_KEY`      | Missing core key                 | Internal invariant: a hypercore has no key after `ready()` — should never happen           |
-| `MISSING_DISCOVERY_KEY` | Missing discovery key            | Internal invariant: a hypercore has no discovery key after `ready()` — should never happen |
+```js
+import { BatchError } from 'multi-core-indexer/error.js'
 
-Errors delivered via the `'error'` event are not created by this module — the
-rejection from your `batch` function, or the underlying hypercore or storage
-error — and are passed through unchanged.
+indexer.on('error', (err) => {
+  if (err instanceof BatchError) {
+    // err.cause is the error the batch function threw
+  }
+})
+```
+
+| Code                 | Message                                      | When                                                      |
+| -------------------- | -------------------------------------------- | --------------------------------------------------------- |
+| `INDEXER_CLOSED`     | Cannot {action} after closing                | `addCore()` or `idle()` called after the indexer closed   |
+| `INDEXER_NOT_CLOSED` | Cannot unlink until fully closed             | `unlink()` called before `close()` has fully resolved     |
+| `BATCH_ERROR`        | The batch function threw or rejected         | Your `batch` function threw or rejected                   |
+| `HYPERCORE_ERROR`    | Error reading from a hypercore               | A hypercore failed to become ready or a block read failed |
+| `STORAGE_ERROR`      | Error reading or writing index state storage | Reading or writing the persisted index bitfield failed    |
+
+`BATCH_ERROR`, `HYPERCORE_ERROR` and `STORAGE_ERROR` identify the source of an
+error delivered via the `'error'` event (or, for `STORAGE_ERROR`, rejecting
+`unlink()`): the underlying error is available unchanged as `error.cause`.
 
 ## Maintainers
 

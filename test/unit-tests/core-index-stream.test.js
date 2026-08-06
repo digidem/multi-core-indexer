@@ -311,7 +311,56 @@ test('A core read failure not caused by closing destroys the stream', async (t) 
   t.after(() => stream.destroy())
   stream.resume()
   const [err] = await once(stream, 'error')
-  assert.equal(err, readError, 'the stream is destroyed with the read error')
+  assert.equal(err.code, 'HYPERCORE_ERROR', 'wrapped as a HYPERCORE_ERROR')
+  assert.equal(err.cause, readError, 'the read error is the cause')
+})
+
+test('A core that fails to open destroys the stream with HYPERCORE_ERROR', async () => {
+  const a = await create()
+  const updateError = new Error('update failed')
+  // @ts-ignore - patching for the test
+  a.update = () => Promise.reject(updateError)
+  const stream = new CoreIndexStream(a, () => new ram(), false)
+  stream.resume()
+  const [err] = await once(stream, 'error')
+  assert.equal(err.code, 'HYPERCORE_ERROR')
+  assert.equal(err.cause, updateError)
+})
+
+test('Storage that fails to open destroys the stream with STORAGE_ERROR', async () => {
+  const a = await create()
+  const storageError = new Error('createStorage failed')
+  const stream = new CoreIndexStream(
+    a,
+    () => {
+      throw storageError
+    },
+    false,
+  )
+  stream.resume()
+  const [err] = await once(stream, 'error')
+  assert.equal(err.code, 'STORAGE_ERROR')
+  assert.equal(err.cause, storageError)
+})
+
+test('unlink() rejects with STORAGE_ERROR when storage fails', async () => {
+  const a = await create()
+  const storageError = new Error('createStorage failed')
+  const stream = new CoreIndexStream(
+    a,
+    () => {
+      throw storageError
+    },
+    false,
+  )
+  stream.on('error', () => {})
+  await assert.rejects(() => stream.unlink(), {
+    code: 'STORAGE_ERROR',
+  })
+  if (!stream.destroyed) {
+    stream.destroy()
+    await once(stream, 'close').catch(() => {})
+  }
 })
 
 test('Downloads queued while the consumer is stalled are all indexed (more than one read batch)', async (t) => {

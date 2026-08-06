@@ -5,7 +5,7 @@ import raf from 'random-access-file'
 import { CoreIndexStream } from './lib/core-index-stream.js'
 import { MultiCoreIndexStream } from './lib/multi-core-index-stream.js'
 import { pDefer, ExhaustivenessError } from './lib/utils.js'
-import { IndexerClosed, IndexerNotClosed } from './lib/errors.js'
+import { BatchError, IndexerClosed, IndexerNotClosed } from './lib/errors.js'
 
 const DEFAULT_BATCH_SIZE = 100
 // The indexing rate (in entries per second) is calculated as an exponential
@@ -60,7 +60,7 @@ export default class MultiCoreIndexer extends TypedEmitter {
    */
   constructor(
     cores,
-    { batch, maxBatch = DEFAULT_BATCH_SIZE, storage, reindex = false }
+    { batch, maxBatch = DEFAULT_BATCH_SIZE, storage, reindex = false },
   ) {
     super()
     this.#createStorage = MultiCoreIndexer.defaultStorage(storage)
@@ -76,7 +76,7 @@ export default class MultiCoreIndexer extends TypedEmitter {
       writev: (entries, cb) => {
         this.#handleEntries(/** @type {Entry<T>[]} */ (entries)).then(
           () => cb(null),
-          cb
+          cb,
         )
       },
       highWaterMark: maxBatch,
@@ -127,7 +127,7 @@ export default class MultiCoreIndexer extends TypedEmitter {
     const coreIndexStream = new CoreIndexStream(
       core,
       this.#createStorage,
-      this.#reindex
+      this.#reindex,
     )
     this.#indexStream.addStream(coreIndexStream)
   }
@@ -270,7 +270,11 @@ export default class MultiCoreIndexer extends TypedEmitter {
     this.#emitState()
     /* c8 ignore next - not sure this is necessary, but better safe than sorry */
     if (!entries.length) return
-    await this.#batch(entries)
+    try {
+      await this.#batch(entries)
+    } catch (err) {
+      throw new BatchError({ cause: err })
+    }
     for (const { key, index } of entries) {
       this.#indexStream.setIndexed(key.toString('hex'), index)
     }
