@@ -1,7 +1,11 @@
 const test = require('node:test')
 const assert = require('node:assert/strict')
+const { promisify } = require('node:util')
 const ram = require('random-access-memory')
 const Bitfield = require('../../lib/bitfield')
+
+/** @param {InstanceType<typeof ram>} storage */
+const closeStorage = (storage) => promisify(storage.close.bind(storage))()
 
 test('bitfield - set and get', async function () {
   const b = await Bitfield.open(new ram())
@@ -19,6 +23,37 @@ test('bitfield - set and get', async function () {
   assert.equal(b.get(42000000), false)
 
   await b.flush()
+})
+
+test('bitfield - setting a bit to its current value is a no-op', async function () {
+  const b = await Bitfield.open(new ram())
+
+  b.set(42, true)
+  await b.flush()
+  // Same value again: the page must not be re-dirtied, so the next flush has
+  // nothing to write
+  b.set(42, true)
+  assert.ok(b.get(42))
+
+  // Setting false on an index whose page was never created is also a no-op
+  b.set(42000000, false)
+  assert.equal(b.get(42000000), false)
+
+  await b.flush()
+})
+
+test('bitfield - open rejects if reading storage fails', async function () {
+  const storage = new ram()
+  const b = await Bitfield.open(storage)
+  b.set(42, true)
+  await b.flush()
+
+  const readError = new Error('read failed')
+  // @ts-ignore - patching the internal read method to fail
+  storage._read = (req) => {
+    process.nextTick(() => req.callback(readError))
+  }
+  await assert.rejects(() => Bitfield.open(storage), /read failed/)
 })
 
 test('bitfield - set and get, no storage', async function () {
@@ -104,7 +139,7 @@ test('bitfield - bits set during in-flight flush are persisted', async function 
   await flushPromise
   storage.slowWrites = false
   await b.flush()
-  await b.close()
+  await closeStorage(storage)
 
   const reloaded = await Bitfield.open(createRAM('bitfield'))
   assert.ok(reloaded.get(10), 'bit set before flush is persisted')
@@ -126,7 +161,7 @@ test('bitfield - failed flush is retried by the next flush', async function () {
   await assert.rejects(() => b.flush(), /write failed/)
   storage.failWrites = false
   await b.flush()
-  await b.close()
+  await closeStorage(storage)
 
   const reloaded = await Bitfield.open(createRAM('bitfield'))
   assert.ok(reloaded.get(10), 'bit is persisted by the retried flush')
