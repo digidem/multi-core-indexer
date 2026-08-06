@@ -181,13 +181,15 @@ class MultiCoreIndexer extends TypedEmitter {
    * @param {Error} err
    */
   #handleError(err) {
-    // If close() started before the pipeline began dying, the error raced a
-    // deliberate close (e.g. an in-flight batch rejecting). Emitting 'error'
-    // then would risk an uncaught exception in consumers that removed
+    // Should be unreachable: an error only reaches the pipe callback if a
+    // stream was destroyed with it before close() destroyed the streams
+    // (streamx ignores destroy(err) once destruction has started), and any
+    // such destroy sets #pipelineDyingBeforeClose via predestroy. Kept as a
+    // safety net: if a future streamx let an error race a deliberate close(),
+    // emitting it would risk an uncaught exception in consumers that removed
     // listeners after calling close(), and the at-least-once batch contract
-    // makes the error recoverable on next start, so it is deliberately
-    // ignored. If the pipeline was already dying when close() was called, the
-    // error preceded the close and is surfaced as normal.
+    // makes a swallowed error recoverable on next start.
+    /* c8 ignore next */
     if (this.#closeStarted() && !this.#pipelineDyingBeforeClose) return
     const pendingIdle = this.#pendingIdle
     this.#pendingIdle = undefined
