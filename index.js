@@ -5,6 +5,7 @@ import raf from 'random-access-file'
 import { CoreIndexStream } from './lib/core-index-stream.js'
 import { MultiCoreIndexStream } from './lib/multi-core-index-stream.js'
 import { pDefer, ExhaustivenessError } from './lib/utils.js'
+import { BatchError, IndexerClosed, IndexerNotClosed } from './lib/errors.js'
 
 const DEFAULT_BATCH_SIZE = 100
 // The indexing rate (in entries per second) is calculated as an exponential
@@ -122,7 +123,7 @@ export default class MultiCoreIndexer extends TypedEmitter {
    * @param {import('hypercore')<T, any>} core
    */
   addCore(core) {
-    this.#assertUsable('Cannot add core after closing')
+    this.#assertUsable('add core')
     const coreIndexStream = new CoreIndexStream(
       core,
       this.#createStorage,
@@ -139,7 +140,7 @@ export default class MultiCoreIndexer extends TypedEmitter {
    * called after the indexer is closed.
    */
   async idle() {
-    this.#assertUsable('Cannot await idle after closing')
+    this.#assertUsable('await idle')
     if (this.#getState().current === 'idle') return
     if (!this.#pendingIdle) {
       this.#pendingIdle = pDefer()
@@ -210,7 +211,7 @@ export default class MultiCoreIndexer extends TypedEmitter {
       case 'idle':
       case 'indexing':
       case 'closing':
-        throw new Error('Cannot unlink until fully closed')
+        throw new IndexerNotClosed()
       case 'closed':
         return this.#indexStream.unlink()
       /* c8 ignore next 2 */
@@ -244,11 +245,11 @@ export default class MultiCoreIndexer extends TypedEmitter {
    * Throws unless the indexer is still usable: close() not started and the
    * pipeline not dying from an error that has not yet reached #handleError.
    *
-   * @param {string} message
+   * @param {string} action for the error message, e.g. 'add core'
    */
-  #assertUsable(message) {
+  #assertUsable(action) {
     if (this.#closeStarted() || this.#pipelineDyingBeforeClose) {
-      throw new Error(message)
+      throw new IndexerClosed({ action })
     }
   }
 
@@ -269,7 +270,11 @@ export default class MultiCoreIndexer extends TypedEmitter {
     this.#emitState()
     /* c8 ignore next - not sure this is necessary, but better safe than sorry */
     if (!entries.length) return
-    await this.#batch(entries)
+    try {
+      await this.#batch(entries)
+    } catch (err) {
+      throw new BatchError({ cause: err })
+    }
     for (const { key, index } of entries) {
       this.#indexStream.setIndexed(key.toString('hex'), index)
     }

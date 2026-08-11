@@ -10,6 +10,7 @@ import ram from 'random-access-memory'
 import Hypercore from 'hypercore'
 import RandomAccessFile from 'random-access-file'
 import MultiCoreIndexer from '../index.js'
+import { BatchError, IndexerClosed } from 'multi-core-indexer/error.js'
 import {
   create,
   createTempDir,
@@ -687,7 +688,7 @@ test('closing causes many methods to fail', async (t) => {
     const closePromise = indexer.close()
     t.after(() => closePromise)
     const core = await create()
-    assert.throws(() => indexer.addCore(core))
+    assert.throws(() => indexer.addCore(core), { code: 'INDEXER_CLOSED' })
   }
 
   {
@@ -697,7 +698,7 @@ test('closing causes many methods to fail', async (t) => {
     })
     const closePromise = indexer.close()
     t.after(() => closePromise)
-    await assert.rejects(() => indexer.idle())
+    await assert.rejects(() => indexer.idle(), { code: 'INDEXER_CLOSED' })
   }
 })
 
@@ -724,14 +725,26 @@ test('unlinking requires the indexer to be closed', async () => {
   })
 
   await indexer.idle()
-  await assert.rejects(() => indexer.unlink(), 'rejects when idle')
+  await assert.rejects(
+    () => indexer.unlink(),
+    { code: 'INDEXER_NOT_CLOSED' },
+    'rejects when idle',
+  )
 
   const core = await create()
   indexer.addCore(core)
-  await assert.rejects(() => indexer.unlink(), 'rejects when indexing')
+  await assert.rejects(
+    () => indexer.unlink(),
+    { code: 'INDEXER_NOT_CLOSED' },
+    'rejects when indexing',
+  )
 
   const closePromise = indexer.close()
-  await assert.rejects(() => indexer.unlink(), 'rejects when closing')
+  await assert.rejects(
+    () => indexer.unlink(),
+    { code: 'INDEXER_NOT_CLOSED' },
+    'rejects when closing',
+  )
 
   await closePromise
   await assert.doesNotReject(() => indexer.unlink())
@@ -827,10 +840,24 @@ test('Batch callback rejection emits error and indexer still closes', async () =
   indexer.on('error', (error) => errors.push(error))
   const idlePromise = indexer.idle()
   const [err] = await once(indexer, 'error')
-  assert.equal(err, batchError, "batch error is emitted as an 'error' event")
+  assert.equal(
+    err.code,
+    'BATCH_ERROR',
+    "emitted as a BATCH_ERROR 'error' event",
+  )
+  assert.equal(err.cause, batchError, 'the batch error is the cause')
+  assert.ok(
+    err instanceof BatchError,
+    "instanceof works with the 'multi-core-indexer/error.js' export",
+  )
+  assert.throws(
+    () => indexer.addCore(cores[0]),
+    IndexerClosed,
+    'addCore() throws an IndexerClosed after the error',
+  )
   await assert.rejects(
     () => idlePromise,
-    /batch failed/,
+    { code: 'BATCH_ERROR' },
     'pending idle() rejects with the batch error',
   )
   await assert.rejects(
@@ -880,11 +907,12 @@ test('Batch error followed by close() during teardown is still emitted', async (
   assert.throws(
     () => indexer.addCore(cores[0]),
     /Cannot add core/,
-    'addCore() throws while the pipeline is dying'
+    'addCore() throws while the pipeline is dying',
   )
   await indexer.close()
   assert.equal(errors.length, 1, 'error preceding close() is still emitted')
-  assert.equal(errors[0], batchError)
+  assert.equal(errors[0].code, 'BATCH_ERROR')
+  assert.equal(errors[0].cause, batchError)
 })
 
 test('Closing a core while indexing: indexer idles, resumes after reopen', async () => {
@@ -1001,11 +1029,12 @@ test('Index storage write failure (disk full) is emitted as an error', async () 
   ])
   if (raced === 'idle') await generateFixtures(cores, 10)
   const [err] = await errorPromise
-  assert.equal(err, storageError, 'storage error is emitted')
+  assert.equal(err.code, 'STORAGE_ERROR', 'emitted as a STORAGE_ERROR')
+  assert.equal(err.cause, storageError, 'the storage error is the cause')
   assert.equal(
-    err.code,
+    /** @type {Error & { code: string }} */ (err.cause).code,
     'ENOSPC',
-    'the error code is preserved, so consumers can classify disk-full errors',
+    'the underlying code is preserved, so consumers can classify disk-full errors',
   )
   await assert.doesNotReject(() => indexer.close(), 'close() still resolves')
   assert.equal(indexer.state.current, 'closed')
@@ -1030,7 +1059,8 @@ test('Core read failure is emitted as an indexer error', async () => {
     storage: createTempDir(),
   })
   const [err] = await once(indexer, 'error')
-  assert.equal(err, readError, 'the read error reaches the indexer consumer')
+  assert.equal(err.code, 'HYPERCORE_ERROR', 'emitted as a HYPERCORE_ERROR')
+  assert.equal(err.cause, readError, 'the read error is the cause')
   await assert.doesNotReject(() => indexer.close(), 'close() still resolves')
   assert.equal(indexer.state.current, 'closed')
 })
@@ -1104,7 +1134,7 @@ test("Without an 'error' listener the error is uncaught, but close() still resol
     import { tmpdir } from 'node:os'
     import { join } from 'node:path'
     process.on('uncaughtException', (err) => {
-      console.log('uncaught:' + err.message)
+      console.log('uncaught:' + err.code + ':' + err.cause?.message)
     })
     async function main() {
       const core = new Hypercore(mkdtempSync(join(tmpdir(), 'mci-core-')))
@@ -1143,7 +1173,7 @@ test("Without an 'error' listener the error is uncaught, but close() still resol
   )
   assert.match(
     result.stdout,
-    /uncaught:batch failed/,
+    /uncaught:BATCH_ERROR:batch failed/,
     'the batch error is thrown as an uncaught exception',
   )
   assert.match(result.stdout, /close-resolved/, 'close() still resolves')
