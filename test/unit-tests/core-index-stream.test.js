@@ -1,10 +1,11 @@
 // @ts-check
-const { CoreIndexStream } = require('../../lib/core-index-stream')
-const test = require('node:test')
-const assert = require('node:assert/strict')
-const { once } = require('events')
-const ram = require('random-access-memory')
-const {
+import test from 'node:test'
+import assert from 'node:assert/strict'
+import { once } from 'node:events'
+import ram from 'random-access-memory'
+import Hypercore from 'hypercore'
+import { CoreIndexStream } from '../../lib/core-index-stream.js'
+import {
   create,
   createTempDir,
   trackCore,
@@ -12,8 +13,7 @@ const {
   replicate,
   generateFixture,
   throttledDrain,
-} = require('../helpers')
-const Hypercore = require('hypercore')
+} from '../helpers/index.js'
 
 // Cores are backed by RocksDB storage: close them after each test so native
 // resources don't accumulate across tests
@@ -76,7 +76,10 @@ test('Re-indexing all items in a core', async () => {
     stream1.setIndexed(entry.index)
   })
   await once(stream1, 'drained')
-  await stream1.destroy()
+  stream1.destroy()
+  // destroy() is not awaitable: wait for 'close' so the index storage is
+  // actually closed before the re-indexing stream re-opens it
+  await once(stream1, 'close')
 
   /** @type {any[]} */
   const entries = []
@@ -155,7 +158,7 @@ test('Readable stream from sparse hypercore', async () => {
 
   assert.deepEqual(
     entries.sort(),
-    [...blocks.slice(5, 20), ...blocks.slice(50, 60)].sort()
+    [...blocks.slice(5, 20), ...blocks.slice(50, 60)].sort(),
   )
 })
 
@@ -341,7 +344,7 @@ test('Downloads queued while the consumer is stalled are all indexed (more than 
   assert.equal(seen.size, blockCount, 'every downloaded block is indexed')
   assert.ok(
     [...seen.values()].every((count) => count === 1),
-    'no block is indexed more than once'
+    'no block is indexed more than once',
   )
 })
 
@@ -365,7 +368,7 @@ test('Cleared blocks are skipped without stalling the stream', async (t) => {
   assert.deepEqual(
     indexes,
     blocks.map((_, i) => i).filter((i) => i >= 100),
-    'only blocks that still exist are indexed, in order'
+    'only blocks that still exist are indexed, in order',
   )
   assert.equal(stream.remaining, 0)
 })

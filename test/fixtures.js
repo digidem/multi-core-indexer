@@ -1,4 +1,4 @@
-const sodium = require('sodium-native')
+import sodium from 'sodium-native'
 
 function generateKeypair(index) {
   const seed = Buffer.alloc(sodium.crypto_sign_SEEDBYTES)
@@ -9,12 +9,12 @@ function generateKeypair(index) {
   return { publicKey, secretKey }
 }
 
-exports.testKeypairs = Array(10)
+export const testKeypairs = Array(10)
   .fill(null)
   .map((_, i) => generateKeypair(i))
 
 // Given the deterministic keypairs above, these are the expected storage keys
-exports.expectedStorageNames = [
+export const expectedStorageNames = [
   '1e/2e/1e2ea00940e04dc2e7d7abb8ed6124eda065002286171f6ccd3d2a0bae032405',
   '2d/17/2d174b46cf4d2f2abaedde8f145ea353fa99dca21857fd68bbeed88dc2ddc01d',
   '4b/eb/4beb8496362d3e6b84437e9064d38d881147160dbbc8036713b55e1e5ad7341c',

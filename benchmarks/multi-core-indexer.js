@@ -1,16 +1,16 @@
 // @ts-check
-const MultiCoreIndexer = require('../')
-const nanobench = require('nanobench')
-const assert = require('assert')
-const {
+import nanobench from 'nanobench'
+import assert from 'node:assert'
+import MultiCoreIndexer from '../index.js'
+import {
   generateFixtures,
   createMultiple,
   createTempDir,
   closeCreatedCores,
   throttledIdle,
-} = require('../test/helpers')
+} from '../test/helpers/index.js'
 
-/** @typedef {import('../lib/types').Entry<'binary'>} Entry */
+/** @typedef {import('../lib/types.js').Entry<'binary'>} Entry */
 
 nanobench('Index 20 cores of 1000 blocks (10 times)', async (b) => {
   const cores = await createMultiple(20)

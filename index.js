@@ -1,10 +1,10 @@
 // @ts-check
-const { Writable } = require('streamx')
-const { TypedEmitter } = require('tiny-typed-emitter')
-const raf = require('random-access-file')
-const { CoreIndexStream } = require('./lib/core-index-stream')
-const { MultiCoreIndexStream } = require('./lib/multi-core-index-stream')
-const { pDefer, ExhaustivenessError } = require('./lib/utils.js')
+import { Writable } from 'streamx'
+import { TypedEmitter } from 'tiny-typed-emitter'
+import raf from 'random-access-file'
+import { CoreIndexStream } from './lib/core-index-stream.js'
+import { MultiCoreIndexStream } from './lib/multi-core-index-stream.js'
+import { pDefer, ExhaustivenessError } from './lib/utils.js'
 
 const DEFAULT_BATCH_SIZE = 100
 // The indexing rate (in entries per second) is calculated as an exponential
@@ -12,23 +12,23 @@ const DEFAULT_BATCH_SIZE = 100
 const MOVING_AVG_FACTOR = 5
 
 /** @typedef {string | ((name: string) => import('random-access-storage'))} StorageParam */
-/** @typedef {import('./lib/types').ValueEncoding} ValueEncoding */
-/** @typedef {import('./lib/types').IndexState} IndexState */
-/** @typedef {import('./lib/types').IndexEvents} IndexEvents */
+/** @typedef {import('./lib/types.js').ValueEncoding} ValueEncoding */
+/** @typedef {import('./lib/types.js').IndexState} IndexState */
+/** @typedef {import('./lib/types.js').IndexEvents} IndexEvents */
 /**
  * @template {ValueEncoding} [T='binary']
- * @typedef {import('./lib/types').Entry<T>} Entry
+ * @typedef {import('./lib/types.js').Entry<T>} Entry
  */
 
 /**
  * @template {ValueEncoding} [T='binary']
  * @extends {TypedEmitter<IndexEvents>}
  */
-class MultiCoreIndexer extends TypedEmitter {
+export default class MultiCoreIndexer extends TypedEmitter {
   #indexStream
   #writeStream
   #batch
-  /** @type {import('./lib/types').IndexStateCurrent} */
+  /** @type {import('./lib/types.js').IndexStateCurrent} */
   #state = 'indexing'
   #rateMeasurementStart = Date.now()
   #rate = 0
@@ -59,7 +59,7 @@ class MultiCoreIndexer extends TypedEmitter {
    */
   constructor(
     cores,
-    { batch, maxBatch = DEFAULT_BATCH_SIZE, storage, reindex = false }
+    { batch, maxBatch = DEFAULT_BATCH_SIZE, storage, reindex = false },
   ) {
     super()
     this.#createStorage = MultiCoreIndexer.defaultStorage(storage)
@@ -75,7 +75,7 @@ class MultiCoreIndexer extends TypedEmitter {
       writev: (entries, cb) => {
         this.#handleEntries(/** @type {Entry<T>[]} */ (entries)).then(
           () => cb(null),
-          cb
+          cb,
         )
       },
       highWaterMark: maxBatch,
@@ -126,7 +126,7 @@ class MultiCoreIndexer extends TypedEmitter {
     const coreIndexStream = new CoreIndexStream(
       core,
       this.#createStorage,
-      this.#reindex
+      this.#reindex,
     )
     this.#indexStream.addStream(coreIndexStream)
   }
@@ -359,5 +359,3 @@ class MultiCoreIndexer extends TypedEmitter {
 
 /* c8 ignore next: only called if close() rejects, which it never should */
 function noop() {}
-
-module.exports = MultiCoreIndexer

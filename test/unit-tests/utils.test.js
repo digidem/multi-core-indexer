@@ -1,7 +1,7 @@
 // @ts-check
-const test = require('node:test')
-const assert = require('node:assert/strict')
-const { ExhaustivenessError } = require('../../lib/utils.js')
+import test from 'node:test'
+import assert from 'node:assert/strict'
+import { ExhaustivenessError } from '../../lib/utils.js'
 
 test('ExhaustivenessError', () => {
   const bools = [true, false]

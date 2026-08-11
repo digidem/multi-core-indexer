@@ -1,22 +1,41 @@
 {
   "compilerOptions": {
-    "target": "es2021",
-    "lib": ["es2021", "dom"],
+    "target": "es2022",
+    "lib": ["es2022", "dom"],
     "strict": true,
     "esModuleInterop": true,
-    "module": "CommonJS",
-    "moduleResolution": "Node",
+    "module": "NodeNext",
+    "moduleResolution": "NodeNext",
     "allowJs": true,
     "checkJs": false,
     "declaration": true,
     "emitDeclarationOnly": true,
     "declarationMap": true,
     "declarationDir": "types",
-    "typeRoots": [
-      "./vendor/types",
-      "./node_modules/@types",
-      "./node_modules/@digidem/types/vendor"
-    ]
+    "types": ["node"],
+    // @digidem/types' vendored @hyperswarm/secret-stream declarations (pulled
+    // in by its hypercore types) don't type-check against @types/streamx
+    "skipLibCheck": true,
+    // These packages ship no types of their own. Under `moduleResolution:
+    // nodenext` TS honours their package.json "exports", so vendored
+    // declarations have to be mapped explicitly rather than picked up from
+    // `typeRoots`.
+    "paths": {
+      "b4a": ["./vendor/types/b4a/index.d.ts"],
+      "big-sparse-array": ["./vendor/types/big-sparse-array/index.d.ts"],
+      "hypercore": [
+        "./node_modules/@digidem/types/vendor/hypercore/index.d.ts"
+      ],
+      "random-access-file": [
+        "./node_modules/@digidem/types/vendor/random-access-file/index.d.ts"
+      ],
+      "random-access-memory": [
+        "./node_modules/@digidem/types/vendor/random-access-memory/index.d.ts"
+      ],
+      "random-access-storage": [
+        "./node_modules/@digidem/types/vendor/random-access-storage/index.d.ts"
+      ]
+    }
   },
   "include": ["index.js"]
 }

@@ -1,31 +1,14 @@
 // @ts-check
 
-const Hypercore = require('hypercore')
-const fs = require('node:fs')
-const os = require('node:os')
-const path = require('node:path')
+import Hypercore from 'hypercore'
+import fs from 'node:fs'
+import os from 'node:os'
+import path from 'node:path'
 
 const BLOCK_LENGTH = Buffer.from('block000000').byteLength
 
-/** @typedef {import('../../lib/types').Entry<'binary'>} Entry */
+/** @typedef {import('../../lib/types.js').Entry<'binary'>} Entry */
 /** @typedef {import('node:events').EventEmitter} EventEmitter */
-
-module.exports = {
-  create,
-  createTempDir,
-  trackCore,
-  closeCreatedCores,
-  replicate,
-  generateFixture,
-  generateFixtures,
-  createMultiple,
-  throttledDrain,
-  throttledIdle,
-  sortEntries,
-  uniqueEntries,
-  logEntries,
-  blocksToExpected,
-}
 
 /** @type {string[]} */
 const tempDirs = []
@@ -48,7 +31,7 @@ process.on('exit', () => {
  *
  * @returns {string}
  */
-function createTempDir() {
+export function createTempDir() {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'multi-core-indexer-'))
   tempDirs.push(dir)
   return dir
@@ -60,14 +43,14 @@ function createTempDir() {
  * @param {Hypercore} b
  * @returns
  */
-function replicate(a, b) {
+export function replicate(a, b) {
   const s1 = a.replicate(true, { keepAlive: false })
   const s2 = b.replicate(false, { keepAlive: false })
   s1.on('error', (err) =>
-    console.log(`replication stream error (initiator): ${err}`)
+    console.log(`replication stream error (initiator): ${err}`),
   )
   s2.on('error', (err) =>
-    console.log(`replication stream error (responder): ${err}`)
+    console.log(`replication stream error (responder): ${err}`),
   )
   s1.pipe(s2).pipe(s1)
   return [s1, s2]
@@ -83,7 +66,7 @@ const createdCores = []
  * @param {T} core
  * @returns {T}
  */
-function trackCore(core) {
+export function trackCore(core) {
   createdCores.push(core)
   return core
 }
@@ -93,7 +76,7 @@ function trackCore(core) {
  * test.afterEach() hook: cores are backed by RocksDB storage, so leaving them
  * open between tests leaks native resources and slows later tests.
  */
-async function closeCreatedCores() {
+export async function closeCreatedCores() {
   const closing = createdCores.splice(0, createdCores.length)
   await Promise.all(closing.map((core) => core.close().catch(noop)))
 }
@@ -101,7 +84,7 @@ async function closeCreatedCores() {
 function noop() {}
 
 /** @param {any} args */
-async function create(...args) {
+export async function create(...args) {
   const core = trackCore(new Hypercore(createTempDir(), ...args))
   await core.ready()
   return core
@@ -113,13 +96,13 @@ async function create(...args) {
  * @param {number} end
  * @returns {Buffer[]}
  */
-function generateFixture(start, end) {
+export function generateFixture(start, end) {
   const blocks = []
   for (let i = start; i < end; i++) {
     blocks.push(
       Buffer.from(
-        `block${i.toString().padStart(BLOCK_LENGTH - 'block'.length, '0')}`
-      )
+        `block${i.toString().padStart(BLOCK_LENGTH - 'block'.length, '0')}`,
+      ),
     )
   }
   return blocks
@@ -131,7 +114,7 @@ function generateFixture(start, end) {
  * @param {number} count
  * @returns {Promise<Entry[]>}
  */
-async function generateFixtures(cores, count) {
+export async function generateFixtures(cores, count) {
   /** @type {Entry[]} */
   const entries = []
   for (const core of cores) {
@@ -155,11 +138,11 @@ const QUIET_WINDOW_MS = 100
  * @param {EventEmitter} emitter
  * @returns {Promise<void>}
  */
-function throttledDrain(emitter) {
+export function throttledDrain(emitter) {
   return throttledStreamEvent(emitter, 'drained')
 }
 
-function throttledIdle(emitter) {
+export function throttledIdle(emitter) {
   return throttledStreamEvent(emitter, 'idle')
 }
 
@@ -203,7 +186,7 @@ function sort(a, b) {
 }
 
 /** @param {Entry[]} e */
-function sortEntries(e) {
+export function sortEntries(e) {
   return e.sort(sort)
 }
 
@@ -215,7 +198,7 @@ function sortEntries(e) {
  * @param {Entry[]} entries
  * @returns {Entry[]}
  */
-function uniqueEntries(entries) {
+export function uniqueEntries(entries) {
   /** @type {Map<string, Entry>} */
   const byId = new Map()
   for (const entry of entries) {
@@ -230,7 +213,7 @@ function uniqueEntries(entries) {
  * @param {Buffer} key
  * @returns
  */
-function blocksToExpected(blocks, key, offset = 0) {
+export function blocksToExpected(blocks, key, offset = 0) {
   return blocks.map((block, i) => ({
     key,
     block,
@@ -242,7 +225,7 @@ function blocksToExpected(blocks, key, offset = 0) {
  * @param {number} n
  * @returns {Promise<import('hypercore')[]>}
  */
-async function createMultiple(n) {
+export async function createMultiple(n) {
   const cores = []
   for (let i = 0; i < n; i++) {
     cores.push(await create())
@@ -251,12 +234,12 @@ async function createMultiple(n) {
 }
 
 /** @param {Entry[]} e */
-function logEntries(e) {
+export function logEntries(e) {
   console.log(
     sortEntries(e).map((e) => ({
       key: e.key.toString('hex'),
       block: e.block.toString(),
       index: e.index,
-    }))
+    })),
   )
 }
