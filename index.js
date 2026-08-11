@@ -1,7 +1,6 @@
 // @ts-check
 const { Writable } = require('streamx')
 const { TypedEmitter } = require('tiny-typed-emitter')
-const { once } = require('events')
 const raf = require('random-access-file')
 const { CoreIndexStream } = require('./lib/core-index-stream')
 const { MultiCoreIndexStream } = require('./lib/multi-core-index-stream')
@@ -40,12 +39,20 @@ class MultiCoreIndexer extends TypedEmitter {
   #emitStateBound
   /** @type {import('./lib/utils.js').DeferredPromise | undefined} */
   #pendingIdle
+  /** @type {Promise<void>} */
+  #streamsClosed
+  /** @type {Promise<void> | undefined} */
+  #closePromise
+  #pipelineDyingBeforeClose = false
 
   /**
    *
    * @param {import('hypercore')<T, any>[]} cores
    * @param {object} opts
-   * @param {(entries: Entry<T>[]) => Promise<void>} opts.batch
+   * @param {(entries: Entry<T>[]) => Promise<void>} opts.batch Called with
+   * entries to be indexed. Delivery is at-least-once: entries that were in an
+   * unfinished batch during an unclean close or error are delivered again on
+   * the next start, so this function must be idempotent.
    * @param {StorageParam} opts.storage
    * @param {boolean} [opts.reindex]
    * @param {number} [opts.maxBatch=100]
@@ -64,16 +71,31 @@ class MultiCoreIndexer extends TypedEmitter {
       highWaterMark: maxBatch,
     })
     this.#batch = batch
-    this.#writeStream = /** @type {Writable<Entry<T>>} */ (
-      new Writable({
-        writev: (entries, cb) => {
-          this.#handleEntries(entries).then(() => cb(), cb)
-        },
-        highWaterMark: maxBatch,
-        byteLength: () => 1,
+    this.#writeStream = new Writable({
+      writev: (entries, cb) => {
+        this.#handleEntries(/** @type {Entry<T>[]} */ (entries)).then(
+          () => cb(null),
+          cb
+        )
+      },
+      highWaterMark: maxBatch,
+      byteLength: () => 1,
+      predestroy: () => this.#handlePipelineDying(),
+    })
+    // The pipe callback fires exactly once, after both streams have closed:
+    // with null after a clean teardown (destroyed by close()), or with the
+    // root-cause error if anything failed (e.g. a core fails to read, or the
+    // batch function rejects via writev).
+    this.#streamsClosed = new Promise((resolve) => {
+      this.#indexStream.pipe(this.#writeStream, (err) => {
+        resolve()
+        if (err) this.#handleError(err)
       })
-    )
-    this.#indexStream.pipe(this.#writeStream)
+    })
+    // 'destroying' fires synchronously the moment the index stream or any of
+    // its source streams starts destroying - 'error' and the pipe callback
+    // only fire after teardown completes
+    this.#indexStream.on('destroying', () => this.#handlePipelineDying())
     this.#emitStateBound = this.#emitState.bind(this)
     // This is needed because the source streams can start indexing before this
     // stream starts reading data. This ensures that the indexing state is
@@ -95,12 +117,12 @@ class MultiCoreIndexer extends TypedEmitter {
    * Add a hypercore to the indexer. Must have the same value encoding as other
    * hypercores already in the indexer.
    *
-   * Rejects if called after the indexer is closed.
+   * Throws if called after the indexer is closed.
    *
    * @param {import('hypercore')<T, any>} core
    */
   addCore(core) {
-    this.#assertOpen('Cannot add core after closing')
+    this.#assertUsable('Cannot add core after closing')
     const coreIndexStream = new CoreIndexStream(
       core,
       this.#createStorage,
@@ -112,11 +134,12 @@ class MultiCoreIndexer extends TypedEmitter {
   /**
    * Resolves when indexing state is 'idle'.
    *
-   * Resolves if the indexer is closed before this resolves. Rejects if called
-   * after the indexer is closed.
+   * Resolves if the indexer is cleanly closed before this resolves. Rejects
+   * with the pipeline error if the indexer errors first, and rejects if
+   * called after the indexer is closed.
    */
   async idle() {
-    this.#assertOpen('Cannot await idle after closing')
+    this.#assertUsable('Cannot await idle after closing')
     if (this.#getState().current === 'idle') return
     if (!this.#pendingIdle) {
       this.#pendingIdle = pDefer()
@@ -128,21 +151,53 @@ class MultiCoreIndexer extends TypedEmitter {
    * Stop the indexer and flush index state to storage. This will not close the
    * underlying storage - it is up to the consumer to do that.
    *
-   * No-op if called more than once.
+   * No-op if called more than once: returns the same promise as the first call.
+   *
+   * @returns {Promise<void>}
    */
-  async close() {
-    if (!this.#isOpen()) return
+  close() {
+    this.#closePromise ??= this.#close()
+    return this.#closePromise
+  }
+
+  async #close() {
     this.#state = 'closing'
     this.#indexStream.off('indexing', this.#emitStateBound)
     this.#indexStream.off('drained', this.#emitStateBound)
     this.#writeStream.destroy()
     this.#indexStream.destroy()
-    await Promise.all([
-      once(this.#indexStream, 'close'),
-      once(this.#writeStream, 'close'),
-    ])
+    await this.#streamsClosed
     this.#pendingIdle?.resolve()
+    this.#pendingIdle = undefined
     this.#state = 'closed'
+  }
+
+  /**
+   * Called when the stream pipeline is destroyed by an error: from the batch
+   * function rejecting, or from a failure reading a core (e.g. a core closed
+   * while indexing). Emits 'error', rejects any pending idle() promises, and
+   * closes the indexer.
+   *
+   * @param {Error} err
+   */
+  #handleError(err) {
+    // Should be unreachable: an error only reaches the pipe callback if a
+    // stream was destroyed with it before close() destroyed the streams
+    // (streamx ignores destroy(err) once destruction has started), and any
+    // such destroy sets #pipelineDyingBeforeClose via predestroy. Kept as a
+    // safety net: if a future streamx let an error race a deliberate close(),
+    // emitting it would risk an uncaught exception in consumers that removed
+    // listeners after calling close(), and the at-least-once batch contract
+    // makes a swallowed error recoverable on next start.
+    /* c8 ignore next */
+    if (this.#closeStarted() && !this.#pipelineDyingBeforeClose) return
+    const pendingIdle = this.#pendingIdle
+    this.#pendingIdle = undefined
+    this.close().catch(noop)
+    pendingIdle?.reject(err)
+    // Emit asynchronously: this runs inside streamx's destroy dispatch, and a
+    // throw from a consumer's 'error' listener there would break teardown.
+    queueMicrotask(() => this.emit('error', err))
   }
 
   /**
@@ -164,24 +219,49 @@ class MultiCoreIndexer extends TypedEmitter {
     }
   }
 
-  /** @returns {boolean} */
-  #isOpen() {
+  /**
+   * Whether close() has been called, by the consumer or from #handleError.
+   * Deliberately blind to pipeline death that close() has not reacted to yet:
+   * that distinction is what #handleError's swallow-or-emit decision needs.
+   *
+   * @returns {boolean}
+   */
+  #closeStarted() {
     switch (this.#state) {
       case 'idle':
       case 'indexing':
-        return true
+        return false
       case 'closing':
       case 'closed':
-        return false
+        return true
       /* c8 ignore next 2 */
       default:
         throw new ExhaustivenessError(this.#state)
     }
   }
 
-  /** @param {string} message */
-  #assertOpen(message) {
-    if (!this.#isOpen()) throw new Error(message)
+  /**
+   * Throws unless the indexer is still usable: close() not started and the
+   * pipeline not dying from an error that has not yet reached #handleError.
+   *
+   * @param {string} message
+   */
+  #assertUsable(message) {
+    if (this.#closeStarted() || this.#pipelineDyingBeforeClose) {
+      throw new Error(message)
+    }
+  }
+
+  /**
+   * Called synchronously (via the streams' predestroy hooks) the moment
+   * anything in the pipeline starts destroying. Ignores the destroys issued
+   * by #close itself, so #pipelineDying is only ever set by pipeline death
+   * that no close() had reacted to - which is exactly what #handleError's
+   * swallow-or-emit decision and #assertUsable need to know.
+   */
+  #handlePipelineDying() {
+    if (this.#closeStarted()) return
+    this.#pipelineDyingBeforeClose = true
   }
 
   /** @param {Entry<T>[]} entries */
@@ -276,5 +356,8 @@ class MultiCoreIndexer extends TypedEmitter {
     }
   }
 }
+
+/* c8 ignore next: only called if close() rejects, which it never should */
+function noop() {}
 
 module.exports = MultiCoreIndexer

@@ -7,7 +7,7 @@
   "scripts": {
     "test": "run-p lint type borp",
     "lint": "eslint .",
-    "borp": "c8 borp",
+    "borp": "c8 borp --concurrency 1",
     "type": "tsc",
     "prepare": "husky install",
     "prepack": "tsc",
@@ -16,24 +16,26 @@
   "keywords": [],
   "author": "Digital Democracy",
   "license": "MIT",
+  "peerDependencies": {
+    "hypercore": "^11.0.0"
+  },
   "dependencies": {
-    "@types/node": "^18.16.19",
-    "@types/streamx": "^2.9.1",
     "b4a": "^1.6.4",
     "big-sparse-array": "^1.0.2",
     "random-access-file": "^4.0.4",
-    "streamx": "^2.15.0",
+    "streamx": "^2.28.0",
     "tiny-typed-emitter": "^2.1.0"
   },
   "devDependencies": {
     "@digidem/types": "^1.0.1",
     "@types/nanobench": "^3.0.0",
+    "@types/node": "^18.19.130",
     "@types/sodium-native": "^2.3.5",
     "borp": "^0.9.1",
     "c8": "^9.1.0",
     "eslint": "^8.44.0",
     "husky": "^8.0.3",
-    "hypercore": "^10.17.0",
+    "hypercore": "^11.35.0",
     "lint-staged": "^13.2.3",
     "multifeed": "^6.0.0",
     "multifeed-index": "^3.4.2",
@@ -44,7 +46,7 @@
     "random-access-memory": "^6.2.0",
     "sodium-native": "^4.0.4",
     "tempy": "^3.0.0",
-    "typescript": "^5.1.6"
+    "typescript": "~5.8.3"
   },
   "eslintConfig": {
     "env": {

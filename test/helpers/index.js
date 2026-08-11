@@ -1,7 +1,9 @@
 // @ts-check
 
 const Hypercore = require('hypercore')
-const ram = require('random-access-memory')
+const fs = require('node:fs')
+const os = require('node:os')
+const path = require('node:path')
 
 const BLOCK_LENGTH = Buffer.from('block000000').byteLength
 
@@ -10,6 +12,9 @@ const BLOCK_LENGTH = Buffer.from('block000000').byteLength
 
 module.exports = {
   create,
+  createTempDir,
+  trackCore,
+  closeCreatedCores,
   replicate,
   generateFixture,
   generateFixtures,
@@ -17,8 +22,36 @@ module.exports = {
   throttledDrain,
   throttledIdle,
   sortEntries,
+  uniqueEntries,
   logEntries,
   blocksToExpected,
+}
+
+/** @type {string[]} */
+const tempDirs = []
+
+// Hypercore 11 requires real disk storage (RocksDB), so tests create
+// temporary directories which are cleaned up when the test process exits.
+process.on('exit', () => {
+  for (const dir of tempDirs) {
+    try {
+      fs.rmSync(dir, { recursive: true, force: true })
+    } catch {
+      // ignore cleanup errors
+    }
+  }
+})
+
+/**
+ * Create a temporary directory for core or index storage, removed on process
+ * exit.
+ *
+ * @returns {string}
+ */
+function createTempDir() {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'multi-core-indexer-'))
+  tempDirs.push(dir)
+  return dir
 }
 
 /**
@@ -40,9 +73,36 @@ function replicate(a, b) {
   return [s1, s2]
 }
 
+/** @type {Hypercore[]} */
+const createdCores = []
+
+/**
+ * Track a core so that it is closed by closeCreatedCores()
+ *
+ * @template {Hypercore} T
+ * @param {T} core
+ * @returns {T}
+ */
+function trackCore(core) {
+  createdCores.push(core)
+  return core
+}
+
+/**
+ * Close all cores created via create() or trackCore(). Call this from a
+ * test.afterEach() hook: cores are backed by RocksDB storage, so leaving them
+ * open between tests leaks native resources and slows later tests.
+ */
+async function closeCreatedCores() {
+  const closing = createdCores.splice(0, createdCores.length)
+  await Promise.all(closing.map((core) => core.close().catch(noop)))
+}
+
+function noop() {}
+
 /** @param {any} args */
 async function create(...args) {
-  const core = new Hypercore(ram, ...args)
+  const core = trackCore(new Hypercore(createTempDir(), ...args))
   await core.ready()
   return core
 }
@@ -83,10 +143,15 @@ async function generateFixtures(cores, count) {
   return entries
 }
 
+// How long a stream must remain drained/idle before we consider it done.
+// Needs to comfortably cover the latency of disk (RocksDB) reads and writes,
+// which can leave the stream drained for longer than this between events.
+const QUIET_WINDOW_MS = 100
+
 /**
  * The index stream can become momentarily drained between reads and
  * appends/downloads of new data. This throttle drained will resolve only when
- * the stream has remained drained for > 10ms
+ * the stream has remained drained for > QUIET_WINDOW_MS
  * @param {EventEmitter} emitter
  * @returns {Promise<void>}
  */
@@ -114,7 +179,7 @@ function throttledStreamEvent(emitter, eventName) {
         emitter.off(eventName, onEvent)
         emitter.off('indexing', onIndexing)
         resolve()
-      }, 10)
+      }, QUIET_WINDOW_MS)
     }
 
     emitter.on(eventName, onEvent)
@@ -140,6 +205,23 @@ function sort(a, b) {
 /** @param {Entry[]} e */
 function sortEntries(e) {
   return e.sort(sort)
+}
+
+/**
+ * Dedupe entries by core key + index. Delivery is at-least-once, so
+ * assertions on entries delivered across an unclean close should compare
+ * unique entries, allowing duplicates.
+ *
+ * @param {Entry[]} entries
+ * @returns {Entry[]}
+ */
+function uniqueEntries(entries) {
+  /** @type {Map<string, Entry>} */
+  const byId = new Map()
+  for (const entry of entries) {
+    byId.set(entry.key.toString('hex') + ':' + entry.index, entry)
+  }
+  return [...byId.values()]
 }
 
 /**

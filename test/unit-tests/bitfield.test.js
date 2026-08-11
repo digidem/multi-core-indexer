@@ -1,7 +1,11 @@
 const test = require('node:test')
 const assert = require('node:assert/strict')
+const { promisify } = require('node:util')
 const ram = require('random-access-memory')
 const Bitfield = require('../../lib/bitfield')
+
+/** @param {InstanceType<typeof ram>} storage */
+const closeStorage = (storage) => promisify(storage.close.bind(storage))()
 
 test('bitfield - set and get', async function () {
   const b = await Bitfield.open(new ram())
@@ -19,6 +23,37 @@ test('bitfield - set and get', async function () {
   assert.equal(b.get(42000000), false)
 
   await b.flush()
+})
+
+test('bitfield - setting a bit to its current value is a no-op', async function () {
+  const b = await Bitfield.open(new ram())
+
+  b.set(42, true)
+  await b.flush()
+  // Same value again: the page must not be re-dirtied, so the next flush has
+  // nothing to write
+  b.set(42, true)
+  assert.ok(b.get(42))
+
+  // Setting false on an index whose page was never created is also a no-op
+  b.set(42000000, false)
+  assert.equal(b.get(42000000), false)
+
+  await b.flush()
+})
+
+test('bitfield - open rejects if reading storage fails', async function () {
+  const storage = new ram()
+  const b = await Bitfield.open(storage)
+  b.set(42, true)
+  await b.flush()
+
+  const readError = new Error('read failed')
+  // @ts-ignore - patching the internal read method to fail
+  storage._read = (req) => {
+    process.nextTick(() => req.callback(readError))
+  }
+  await assert.rejects(() => Bitfield.open(storage), /read failed/)
 })
 
 test('bitfield - set and get, no storage', async function () {
@@ -86,3 +121,77 @@ test('bitfield - reload', async function () {
     assert.ok(b.get(1424242424))
   }
 })
+
+// Regression test: bits set while a flush's writes are in flight used to be
+// dropped from the unflushed queue when the flush completed, so they were
+// never persisted by any later flush
+test('bitfield - bits set during in-flight flush are persisted', async function () {
+  const createRAM = ram.reusable()
+  const storage = makeSlowWriteStorage(createRAM('bitfield'))
+
+  const b = await Bitfield.open(storage)
+  b.set(10, true)
+  storage.slowWrites = true
+  const flushPromise = b.flush()
+  // These are set while the writes for the first flush are still in flight
+  b.set(20, true)
+  b.set(40000, true)
+  await flushPromise
+  storage.slowWrites = false
+  await b.flush()
+  await closeStorage(storage)
+
+  const reloaded = await Bitfield.open(createRAM('bitfield'))
+  assert.ok(reloaded.get(10), 'bit set before flush is persisted')
+  assert.ok(reloaded.get(20), 'bit set during in-flight flush is persisted')
+  assert.ok(
+    reloaded.get(40000),
+    'bit on another page set during in-flight flush is persisted'
+  )
+})
+
+test('bitfield - failed flush is retried by the next flush', async function () {
+  const createRAM = ram.reusable()
+  const storage = makeSlowWriteStorage(createRAM('bitfield'))
+
+  const b = await Bitfield.open(storage)
+  b.set(10, true)
+  b.set(40000, true)
+  storage.failWrites = true
+  await assert.rejects(() => b.flush(), /write failed/)
+  storage.failWrites = false
+  await b.flush()
+  await closeStorage(storage)
+
+  const reloaded = await Bitfield.open(createRAM('bitfield'))
+  assert.ok(reloaded.get(10), 'bit is persisted by the retried flush')
+  assert.ok(reloaded.get(40000), 'bit on another page is persisted too')
+})
+
+/**
+ * Patch a storage so that writes can be slowed by a couple of ticks (to
+ * interleave set() calls with an in-flight flush) or failed (to test flush
+ * error handling)
+ *
+ * @param {InstanceType<typeof ram>} storage
+ */
+function makeSlowWriteStorage(storage) {
+  const originalWrite = storage._write.bind(storage)
+  const patched = Object.assign(storage, {
+    slowWrites: false,
+    failWrites: false,
+    /** @param {any} req */
+    _write(req) {
+      if (patched.failWrites) {
+        process.nextTick(() => req.callback(new Error('write failed')))
+        return
+      }
+      if (patched.slowWrites) {
+        setImmediate(() => setImmediate(() => originalWrite(req)))
+        return
+      }
+      originalWrite(req)
+    },
+  })
+  return patched
+}

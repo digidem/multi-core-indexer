@@ -91,9 +91,11 @@ batched) as fast as they can be read, up to `opts.maxBatch`. `block` is the
 block of data from the hypercore, `key` is the public key where the `block` is
 from, and `index` is the index of the `block` within the hypercore.
 
-**Note:** Currently if `batch` throws an error, things will break, and the
-entries will still be persisted as indexed. This will be fixed in a later
-release.
+**Note:** Delivery to `batch` is at-least-once: entries that were in an
+unfinished batch when the indexer was closed, or when an error occurred, are
+delivered again on the next start. `batch` must therefore be idempotent. If
+`batch` rejects, the indexer emits an `'error'` event and closes itself (see
+`indexer.on('error', handler)` below).
 
 #### opts.storage
 
@@ -147,21 +149,24 @@ Type: `Hypercore`
 Add a hypercore to the indexer. Must have the same value encoding as other
 hypercores already in the indexer.
 
-Rejects if called after the indexer is closed.
+Throws if called after the indexer is closed or has errored.
 
 ### indexer.idle()
 
 Resolves when indexing state is `'idle'`.
 
-Resolves if the indexer is closed before this resolves. Rejects if called
-after the indexer is closed.
+Resolves if the indexer is cleanly closed before this resolves, and rejects
+with the pipeline error if the indexer errors first. Rejects if called after
+the indexer is closed or has errored.
 
 ### indexer.close()
 
 Stop the indexer and flush index state to storage. This will not close the
 underlying storage - it is up to the consumer to do that.
 
-No-op if called more than once.
+No-op if called more than once: returns the same promise as the first call.
+Also safe to call (and resolves) after the indexer has closed itself due to an
+error.
 
 ### indexer.unlink()
 
@@ -203,6 +208,20 @@ Event listener for when the indexer has completed indexing of available data.
 **Note**: During sync this can be emitted before sync is complete because the
 indexer has caught up with currently downloaded data, and the indexer will start
 indexing again as new data is downloaded.
+
+### indexer.on('error', handler)
+
+#### handler
+
+_Required_\
+Type: `(err: Error) => void`
+
+Emitted when the batch function rejects, a core read fails, or writing index
+state to storage fails. Errors are not recoverable within the instance: the
+indexer closes itself (pending `idle()` promises reject, `close()` still
+resolves), and indexing can be resumed by creating a new indexer with the same
+storage. As with any Node `EventEmitter`, if no `'error'` listener is attached
+the error is thrown as an uncaught exception.
 
 ## Maintainers
 

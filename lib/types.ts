@@ -2,6 +2,18 @@ import { ReadableEvents } from 'streamx'
 
 export type IndexStateCurrent = 'idle' | 'indexing' | 'closing' | 'closed'
 
+export interface IndexStreamEvents extends ReadableEvents {
+  drained: []
+  indexing: []
+  /**
+   * Emitted synchronously when the stream (or, for MultiCoreIndexStream, any
+   * of its source streams) starts destroying. Unlike 'error' and 'close',
+   * which only fire after teardown completes, this fires the moment
+   * destruction is initiated.
+   */
+  destroying: []
+}
+
 export interface IndexState {
   current: IndexStateCurrent
   remaining: number
@@ -17,11 +29,7 @@ export interface IndexEvents {
   'index-state': (state: IndexState) => void
   indexing: () => void
   idle: () => void
-}
-
-export type IndexStreamEvents<T> = ReadableEvents<T> & {
-  drained: () => void
-  indexing: () => void
+  error: (err: Error) => void
 }
 
 export type ValueEncoding = 'binary' | 'utf-8' | 'json'
