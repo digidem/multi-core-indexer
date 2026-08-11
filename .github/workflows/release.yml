@@ -4,9 +4,9 @@ on:
   workflow_dispatch:
     inputs:
       semver:
-        description: 'The semver to use'
+        description: "The semver to use"
         required: true
-        default: 'auto'
+        default: "auto"
         type: choice
         options:
           - auto
@@ -23,7 +23,13 @@ on:
 
 jobs:
   release:
-    if: ${{github.event_name != 'pull_request' || github.event.pull_request.merged}}
+    if: >-
+      github.event_name == 'workflow_dispatch' ||
+      (github.event.pull_request.user.login == 'optic-release-automation[bot]'
+        && startsWith(github.event.pull_request.title, '[OPTIC-RELEASE-AUTOMATION]')
+        && (!github.event.pull_request.merged
+          || github.event.pull_request.base.ref == 'main'
+          || contains(github.event.pull_request.head.ref, '-pre.')))
     runs-on: ubuntu-latest
     permissions:
       contents: write
@@ -33,21 +39,20 @@ jobs:
       - name: Use Node.js
         uses: actions/setup-node@v4
         with:
-          node-version-file: '.nvmrc'
-      - uses: nearform-actions/optic-release-automation-action@v4
+          node-version-file: ".nvmrc"
+      - uses: nearform-actions/optic-release-automation-action@a2785548e8bdafab7e628c2317b604278e460434 # v4.12.2
         with:
-          commit-message: 'Release {version}'
+          commit-message: "Release {version}"
           sync-semver-tags: false
-          access: 'public'
-          # This prefix is added before the prerelease number, e.g. `v3.0.0-alpha.0`
-          # prerelease-prefix: 'alpha'
+          access: "public"
+          # This prefix is added before the prerelease number, e.g. `v3.0.0-pre.0`
+          prerelease-prefix: "pre"
           semver: ${{ github.event.inputs.semver }}
           # Prereleases are published under the `alpha` npm dist-tag
-          # npm-tag: ${{ startsWith(github.event.inputs.semver, 'pre') && 'alpha' || 'latest' }}
+          npm-tag: ${{ startsWith(github.event.inputs.semver, 'pre') && 'next' || 'latest' }}
           # Don't notify linked issues
           notify-linked-issues: false
-          # optional: set this secret in your repo config for publishing to NPM
-          npm-token: ${{ secrets.NPM_TOKEN }}
+          publish-mode: oidc
           build-command: |
             npm ci
 
