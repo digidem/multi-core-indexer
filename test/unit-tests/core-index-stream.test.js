@@ -310,3 +310,62 @@ test('A core read failure not caused by closing destroys the stream', async (t) 
   const [err] = await once(stream, 'error')
   assert.equal(err, readError, 'the stream is destroyed with the read error')
 })
+
+test('Downloads queued while the consumer is stalled are all indexed (more than one read batch)', async (t) => {
+  const blockCount = 200 // > READ_BATCH_SIZE (32) so batching in the download path is exercised
+  const a = await create()
+  const blocks = generateFixture(0, blockCount)
+  await a.append(blocks)
+  const b = await create(a.key)
+
+  replicate(a, b)
+
+  const stream = new CoreIndexStream(b, () => new ram(), false)
+  t.after(() => stream.destroy())
+  /** @type {Map<number, number>} */
+  const seen = new Map()
+  stream.on('data', (entry) => {
+    seen.set(entry.index, (seen.get(entry.index) || 0) + 1)
+    stream.setIndexed(entry.index)
+  })
+  // Nothing is downloaded yet, so the stream starts drained
+  await throttledDrain(stream)
+  stream.pause()
+
+  // Queue up download events for every block while the consumer is stalled
+  await b.download({ start: 0, end: blockCount }).downloaded()
+
+  stream.resume()
+  await throttledDrain(stream)
+
+  assert.equal(seen.size, blockCount, 'every downloaded block is indexed')
+  assert.ok(
+    [...seen.values()].every((count) => count === 1),
+    'no block is indexed more than once'
+  )
+})
+
+test('Cleared blocks are skipped without stalling the stream', async (t) => {
+  const blockCount = 200 // > READ_BATCH_SIZE (32) so whole batches can be all-null
+  const a = await create()
+  const blocks = generateFixture(0, blockCount)
+  await a.append(blocks)
+  await a.clear(0, 100)
+
+  const stream = new CoreIndexStream(a, () => new ram(), false)
+  t.after(() => stream.destroy())
+  /** @type {number[]} */
+  const indexes = []
+  stream.on('data', (entry) => {
+    indexes.push(entry.index)
+    stream.setIndexed(entry.index)
+  })
+  await throttledDrain(stream)
+
+  assert.deepEqual(
+    indexes,
+    blocks.map((_, i) => i).filter((i) => i >= 100),
+    'only blocks that still exist are indexed, in order'
+  )
+  assert.equal(stream.remaining, 0)
+})
